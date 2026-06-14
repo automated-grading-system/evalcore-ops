@@ -1,0 +1,141 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ags-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ags}
+      POSTGRES_USER: ${POSTGRES_USER:-ags}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ags_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ags-postgres-data:/var/lib/postgresql/data
+    networks:
+      - ags-network
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ags-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-ags}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-ags_password}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - ags-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - ags-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: ags-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ags}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ags_password}
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - ags-minio-data:/data
+    networks:
+      - ags-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: ags-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-ags_password}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \"$${S3_ACCESS_KEY}\" \"$${S3_SECRET_KEY}\" &&
+      mc mb --ignore-existing local/lab-assets &&
+      mc mb --ignore-existing local/submissions &&
+      mc mb --ignore-existing local/evaluation-artifacts
+      "
+    networks:
+      - ags-network
+    restart: "no"
+
+  identity-service:
+    profiles:
+      - app
+    image: ${IDENTITY_IMAGE:-dorrissdang/evalcore-identity-service:main}
+    container_name: ${IDENTITY_CONTAINER_NAME:-ags-identity-service}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      DATABASE_URL: ${IDENTITY_DATABASE_URL:-Host=postgres;Port=5432;Database=ags;Username=ags;Password=ags_password}
+      JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
+      JWT_ISSUER: ${JWT_ISSUER:-ags}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
+      JWT_EXPIRES_MINUTES: ${JWT_EXPIRES_MINUTES:-1440}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-ags_password}
+    ports:
+      - "${IDENTITY_PUBLIC_PORT:-8081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ags-network
+    restart: unless-stopped
+    # The published image may not include curl/wget in its runtime layer.
+    # Readiness is verified externally by scripts/smoke-auth-gateway.sh.
+
+  gateway:
+    profiles:
+      - app
+    image: caddy:2.8-alpine
+    container_name: ags-gateway
+    environment:
+      IDENTITY_UPSTREAM: ${IDENTITY_UPSTREAM:-identity-service:8080}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - identity-service
+    networks:
+      - ags-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  ags-network:
+    name: ags-network
+
+volumes:
+  ags-postgres-data:
+    name: ags-postgres-data
+  ags-rabbitmq-data:
+    name: ags-rabbitmq-data
+  ags-minio-data:
+    name: ags-minio-data

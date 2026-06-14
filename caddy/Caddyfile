@@ -1,0 +1,39 @@
+:8080 {
+	# Gateway health is served directly by Caddy.
+	handle /health {
+		header Content-Type application/json
+		respond `{"status":"healthy","service":"ags-gateway"}` 200
+	}
+
+	# Full Docker mode uses IDENTITY_UPSTREAM=identity-service:8080.
+	# Legacy host mode can use IDENTITY_UPSTREAM=host.docker.internal:8081.
+
+	# Debug route for checking the Identity Service through Caddy.
+	handle /identity/health {
+		rewrite * /health
+		reverse_proxy http://{$IDENTITY_UPSTREAM}
+	}
+
+	# Identity API routes keep their /api prefixes when proxied upstream.
+	handle /api/auth/* {
+		reverse_proxy http://{$IDENTITY_UPSTREAM}
+	}
+
+	handle /api/users/* {
+		reverse_proxy http://{$IDENTITY_UPSTREAM}
+	}
+
+	handle /api/admin/users* {
+		reverse_proxy http://{$IDENTITY_UPSTREAM}
+	}
+
+	# Optional local Swagger access for the Identity Service.
+	handle /swagger* {
+		reverse_proxy http://{$IDENTITY_UPSTREAM}
+	}
+
+	handle {
+		header Content-Type application/json
+		respond `{"error":"route_not_found"}` 404
+	}
+}

@@ -1,0 +1,25 @@
+services:
+  gateway:
+    image: caddy:2.8-alpine
+    container_name: ags-gateway
+    restart: unless-stopped
+    environment:
+      IDENTITY_UPSTREAM: ${IDENTITY_UPSTREAM:-host.docker.internal:8081}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ags-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  ags-network:
+    external: true
+    name: ags-network
