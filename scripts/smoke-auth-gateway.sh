@@ -444,19 +444,33 @@ complete_status="$(
     -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${lecturer_token}" \
-    -d '{}' \
+    -d '{"requirementUploaded":true,"collectionUploaded":true}' \
     "${GATEWAY_URL}/api/labs/${lab_id}/assets/complete"
-)" || complete_status="000"
+)" || fail "Lab assets complete curl failed."
 
-if [[ "${complete_status}" -ge 200 && "${complete_status}" -lt 300 ]]; then
-  log "Lab assets complete OK (HTTP ${complete_status})."
-elif [[ "${complete_status}" == "404" || "${complete_status}" == "000" ]]; then
-  log "Lab assets complete endpoint returned HTTP ${complete_status} (may not be implemented yet). Continuing."
-else
+if [[ "${complete_status}" -lt 200 || "${complete_status}" -ge 300 ]]; then
   log "Lab assets complete HTTP status: ${complete_status}"
   sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
-  log "WARNING: Lab assets complete returned unexpected status ${complete_status}. Continuing."
+  fail "Lab assets complete failed. HTTP ${complete_status}. Both files must be uploaded before completing."
 fi
+
+# Verify response: success=true, data.status=="active", data.assetsCompletedAt not null
+complete_lab_status="$(jq -r '.data.status // .data.lab.status // empty' "${response_body_file}")"
+complete_assets_at="$(jq -r '.data.assetsCompletedAt // .data.lab.assetsCompletedAt // empty' "${response_body_file}")"
+
+if [[ "${complete_lab_status}" != "active" ]]; then
+  log "Complete assets response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Lab status after complete is '${complete_lab_status}', expected 'active'."
+fi
+
+if [[ -z "${complete_assets_at}" || "${complete_assets_at}" == "null" ]]; then
+  log "Complete assets response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "assetsCompletedAt is null after complete assets. Backend did not mark lab as complete."
+fi
+
+log "Lab assets complete OK (HTTP ${complete_status}, status=${complete_lab_status}, assetsCompletedAt=${complete_assets_at})."
 
 # ===========================================================================
 # 12. STUDENT LISTS CLASS LABS
@@ -485,7 +499,7 @@ log "Student list class labs OK."
 
 log "=== [13/13] Lab asset access controls ==="
 
-# Student gets requirement URL (may be 200 or 404 if assets not yet completed)
+# Student gets requirement URL — must be 200 after assets are complete and lab is active
 req_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -496,12 +510,10 @@ req_status="$(
 
 if [[ "${req_status}" == "200" ]]; then
   log "Student requirement URL access OK (HTTP 200)."
-elif [[ "${req_status}" == "404" ]]; then
-  log "Student requirement URL returned 404 (assets not yet uploaded; acceptable at this stage)."
 else
   log "Student requirement URL HTTP status: ${req_status}"
   sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
-  log "WARNING: Unexpected status ${req_status} for student requirement URL. Continuing."
+  fail "Student requirement URL must be 200 after lab is active but got HTTP ${req_status}. Is lab status active? Did assets complete succeed?"
 fi
 
 # Student must be forbidden from collection URL
@@ -527,7 +539,7 @@ else
   fi
 fi
 
-# Lecturer can get collection URL
+# Lecturer can get collection URL — must be 200
 lecturer_col_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -538,16 +550,10 @@ lecturer_col_status="$(
 
 if [[ "${lecturer_col_status}" == "200" ]]; then
   log "Lecturer collection URL access OK (HTTP 200)."
-elif [[ "${lecturer_col_status}" == "404" ]]; then
-  log "Lecturer collection URL returned 404 (assets not yet uploaded; acceptable at this stage)."
 else
   log "Lecturer collection URL HTTP status: ${lecturer_col_status}"
-  if [[ "${lecturer_col_status}" == "403" ]]; then
-    sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
-    fail "Lecturer should be allowed to access collection URL but got 403."
-  else
-    log "WARNING: Unexpected status ${lecturer_col_status} for lecturer collection URL. Continuing."
-  fi
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Lecturer collection URL must be 200 but got HTTP ${lecturer_col_status}. Authorization control or asset state is broken."
 fi
 
 # ===========================================================================
