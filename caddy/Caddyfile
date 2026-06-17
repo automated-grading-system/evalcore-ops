@@ -32,6 +32,23 @@
 		reverse_proxy http://{$IDENTITY_UPSTREAM}
 	}
 
+	# Full Docker mode uses CLASS_UPSTREAM=class-service:8080.
+
+	# Debug route for checking the Class Service health through Caddy.
+	handle /class/health {
+		rewrite * /health
+		reverse_proxy http://{$CLASS_UPSTREAM}
+	}
+
+	# Class API routes keep their /api prefixes when proxied upstream.
+	handle /api/classes* {
+		reverse_proxy http://{$CLASS_UPSTREAM}
+	}
+
+	handle /api/labs* {
+		reverse_proxy http://{$CLASS_UPSTREAM}
+	}
+
 	handle {
 		header Content-Type application/json
 		respond `{"error":"route_not_found"}` 404
