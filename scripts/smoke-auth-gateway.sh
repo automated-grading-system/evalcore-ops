@@ -77,8 +77,9 @@ ADMIN_PASSWORD="Password123!"
 # Temp files
 login_body_file="$(mktemp)"
 response_body_file="$(mktemp)"
-upload_pdf="$(mktemp --suffix=.pdf)"
-upload_json="$(mktemp --suffix=.json)"
+# Use fixed names so they match the filenames sent in requirementFileName / collectionFileName metadata
+upload_pdf="/tmp/ops-smoke-requirements.pdf"
+upload_json="/tmp/ops-smoke-postman-collection.json"
 
 trap 'rm -f "${login_body_file}" "${response_body_file}" "${upload_pdf}" "${upload_json}"' EXIT
 
@@ -289,7 +290,7 @@ create_lab_status="$(
     -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${lecturer_token}" \
-    -d '{"title":"Smoke Test Lab","description":"Created by smoke-app","dueDate":"2099-12-31T23:59:59Z"}' \
+    -d '{"title":"Smoke Test Lab","description":"Created by smoke-app","deadline":"2099-12-31T23:59:59Z","requirementFileName":"ops-smoke-requirements.pdf","collectionFileName":"ops-smoke-postman-collection.json"}' \
     "${GATEWAY_URL}/api/classes/${class_id}/labs"
 )" || fail "Create lab curl failed."
 
@@ -305,6 +306,8 @@ lab_id="$(
     .labId //
     .data.id //
     .data.labId //
+    .data.lab.id //
+    .data.lab.labId //
     .result.id //
     .result.labId //
     empty
@@ -317,6 +320,27 @@ if [[ -z "${lab_id}" || "${lab_id}" == "null" ]]; then
   fail "Create lab did not return a lab ID."
 fi
 log "Lecturer created lab ID: ${lab_id}"
+
+# Capture presigned upload URLs returned inline by the create-lab response.
+# The API returns data.upload.requirementUploadUrl and data.upload.collectionUploadUrl.
+create_lab_requirement_upload_url="$(jq -r '
+  .data.upload.requirementUploadUrl //
+  .data.upload.requirementUrl //
+  .upload.requirementUploadUrl //
+  .upload.requirementUrl //
+  empty
+' "${response_body_file}")"
+create_lab_collection_upload_url="$(jq -r '
+  .data.upload.collectionUploadUrl //
+  .data.upload.collectionUrl //
+  .upload.collectionUploadUrl //
+  .upload.collectionUrl //
+  empty
+' "${response_body_file}")"
+
+if [[ -n "${create_lab_requirement_upload_url}" && "${create_lab_requirement_upload_url}" != "null" ]]; then
+  log "Create lab returned inline presigned upload URLs."
+fi
 
 # ===========================================================================
 # 9. VERIFY PRESIGNED UPLOAD URLS USE MINIO PUBLIC ENDPOINT
@@ -350,48 +374,62 @@ log "Presigned URL endpoint check OK (or lab assets endpoint skipped on fresh la
 
 log "=== [10/13] Fetching presigned upload URLs for lab assets ==="
 
-# Try to get upload URLs. This endpoint may vary by API design.
-# Try /api/labs/{labId}/assets/upload-urls first, then /api/labs/{labId}/assets.
-upload_urls_status="$(
-  curl -sS \
-    -o "${response_body_file}" \
-    -w "%{http_code}" \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${lecturer_token}" \
-    -d '{}' \
-    "${GATEWAY_URL}/api/labs/${lab_id}/assets/upload-urls"
-)" || upload_urls_status="000"
+# Upload URLs were already returned inline by the create-lab response.
+# Fall back to a separate endpoint only if they were not present.
+requirement_upload_url="${create_lab_requirement_upload_url}"
+collection_upload_url="${create_lab_collection_upload_url}"
 
-if [[ "${upload_urls_status}" -ge 200 && "${upload_urls_status}" -lt 300 ]]; then
-  requirement_upload_url="$(jq -r '.requirementUrl // .requirement // .uploadUrls.requirement // empty' "${response_body_file}")"
-  collection_upload_url="$(jq -r '.collectionUrl // .collection // .uploadUrls.collection // empty' "${response_body_file}")"
+if [[ -z "${requirement_upload_url}" || "${requirement_upload_url}" == "null" ]]; then
+  log "No inline upload URLs from create-lab; trying /api/labs/${lab_id}/assets/upload-urls..."
+  upload_urls_status="$(
+    curl -sS \
+      -o "${response_body_file}" \
+      -w "%{http_code}" \
+      -X POST \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${lecturer_token}" \
+      -d '{}' \
+      "${GATEWAY_URL}/api/labs/${lab_id}/assets/upload-urls"
+  )" || upload_urls_status="000"
 
-  if [[ -n "${requirement_upload_url}" && "${requirement_upload_url}" != "null" ]]; then
-    log "Uploading requirement PDF to presigned URL..."
-    upload_status="$(curl -sS -o /dev/null -w "%{http_code}" -X PUT -H "Content-Type: application/pdf" --data-binary "@${upload_pdf}" "${requirement_upload_url}")" || upload_status="000"
-    if [[ "${upload_status}" -ge 200 && "${upload_status}" -lt 300 ]]; then
-      log "Requirement PDF upload OK (HTTP ${upload_status})."
-    else
-      log "WARNING: Requirement PDF upload returned HTTP ${upload_status}. Continuing."
-    fi
+  if [[ "${upload_urls_status}" -ge 200 && "${upload_urls_status}" -lt 300 ]]; then
+    requirement_upload_url="$(jq -r '.requirementUrl // .requirement // .uploadUrls.requirement // .data.upload.requirementUploadUrl // empty' "${response_body_file}")"
+    collection_upload_url="$(jq -r '.collectionUrl // .collection // .uploadUrls.collection // .data.upload.collectionUploadUrl // empty' "${response_body_file}")"
   else
-    log "No requirement upload URL in response; skipping PDF upload."
+    log "Upload URL endpoint returned HTTP ${upload_urls_status}. Skipping presigned upload step."
   fi
+fi
 
-  if [[ -n "${collection_upload_url}" && "${collection_upload_url}" != "null" ]]; then
-    log "Uploading Postman collection JSON to presigned URL..."
-    upload_status="$(curl -sS -o /dev/null -w "%{http_code}" -X PUT -H "Content-Type: application/json" --data-binary "@${upload_json}" "${collection_upload_url}")" || upload_status="000"
-    if [[ "${upload_status}" -ge 200 && "${upload_status}" -lt 300 ]]; then
-      log "Postman collection upload OK (HTTP ${upload_status})."
-    else
-      log "WARNING: Postman collection upload returned HTTP ${upload_status}. Continuing."
-    fi
+if [[ -n "${requirement_upload_url}" && "${requirement_upload_url}" != "null" ]]; then
+  # Verify URL uses the public MinIO endpoint, not internal Docker DNS
+  if echo "${requirement_upload_url}" | grep -q 'http://minio:'; then
+    fail "Presigned URLs expose internal Docker DNS (http://minio:...). Check S3_PUBLIC_ENDPOINT config."
+  fi
+  log "Presigned upload URLs use public endpoint OK."
+
+  log "Uploading requirement PDF to presigned URL..."
+  upload_status="$(curl -sS -o /dev/null -w "%{http_code}" -X PUT --upload-file "${upload_pdf}" "${requirement_upload_url}")" || upload_status="000"
+  if [[ "${upload_status}" -ge 200 && "${upload_status}" -lt 300 ]]; then
+    log "Requirement PDF upload OK (HTTP ${upload_status})."
   else
-    log "No collection upload URL in response; skipping JSON upload."
+    log "Requirement PDF upload HTTP status: ${upload_status}"
+    fail "Requirement PDF upload failed. HTTP ${upload_status}."
   fi
 else
-  log "Upload URL endpoint returned HTTP ${upload_urls_status} (may not be implemented or may differ). Skipping presigned upload step."
+  log "No requirement upload URL available; skipping PDF upload."
+fi
+
+if [[ -n "${collection_upload_url}" && "${collection_upload_url}" != "null" ]]; then
+  log "Uploading Postman collection JSON to presigned URL..."
+  upload_status="$(curl -sS -o /dev/null -w "%{http_code}" -X PUT --upload-file "${upload_json}" "${collection_upload_url}")" || upload_status="000"
+  if [[ "${upload_status}" -ge 200 && "${upload_status}" -lt 300 ]]; then
+    log "Postman collection upload OK (HTTP ${upload_status})."
+  else
+    log "Postman collection upload HTTP status: ${upload_status}"
+    fail "Postman collection upload failed. HTTP ${upload_status}."
+  fi
+else
+  log "No collection upload URL available; skipping JSON upload."
 fi
 
 # ===========================================================================
