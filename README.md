@@ -63,7 +63,7 @@ make app-down
 The root `compose.yaml` is the primary entry point:
 
 - `docker compose up -d` starts infrastructure only (Postgres, RabbitMQ, MinIO).
-- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + Caddy gateway.
+- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + Caddy gateway + Dozzle.
 
 ## App Stack Services
 
@@ -76,6 +76,7 @@ The root `compose.yaml` is the primary entry point:
 | Class Service    | Classes, labs, assets       |
 | Submission Service | Lab submissions and source assets |
 | Gateway (Caddy)  | Reverse proxy / API gateway |
+| Dozzle           | Local Docker container log viewer |
 
 ## App Commands
 
@@ -97,9 +98,10 @@ make app-down
 - Identity direct: `http://localhost:8081`
 - Class Service direct: `http://localhost:8082`
 - Submission Service direct: `http://localhost:8083`
-- MinIO Console: `http://localhost:9001`
 - MinIO API: `http://localhost:9000`
-- RabbitMQ Management: `http://localhost:15672`
+- MinIO Console: `http://localhost:9001`
+- RabbitMQ Console: `http://localhost:15672`
+- Dozzle Logs: `http://localhost:9999`
 - PostgreSQL: `localhost:5432`
 
 ## Gateway Routes
@@ -152,6 +154,26 @@ The stack creates these buckets on startup:
 - `evaluation-reports`
 
 `evaluation-reports` is reserved for the Evaluation Service.
+
+MinIO CORS is configured with `MINIO_API_CORS_ALLOW_ORIGIN` for browser presigned uploads and downloads. The `minio-init` service creates the intended buckets and logs the active MinIO API CORS setting.
+
+Allowed frontend origins:
+
+- `http://localhost:3000`
+- `http://localhost:5173`
+
+Browser `PUT` to presigned URLs should work for:
+
+- `lab-assets`
+- `submission-assets`
+
+The same MinIO API CORS setting covers `evaluation-reports`, which is reserved for future report downloads.
+
+## Dozzle Logs
+
+Dozzle is available at `http://localhost:9999` when the app profile is running. It is for local development only and is used to view Docker container logs.
+
+Dozzle reads Docker metadata and logs through the read-only Docker socket mount. It is not routed through Caddy and should not be exposed publicly.
 
 ## Current Flow
 

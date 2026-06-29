@@ -903,4 +903,9 @@ log "  Submission (gateway): ${GATEWAY_URL}/submission/health"
 log "  Created class ID:   ${class_id}"
 log "  Created lab ID:     ${lab_id}"
 log "  Submission ID:      ${submission_id}"
+if curl -fsS "http://localhost:${DOZZLE_PUBLIC_PORT:-9999}" >/dev/null 2>&1; then
+  log "  Dozzle is reachable."
+else
+  log "  Dozzle was not reachable at http://localhost:${DOZZLE_PUBLIC_PORT:-9999}; check manually if needed."
+fi
 log "============================================================"
