@@ -63,7 +63,7 @@ make app-down
 The root `compose.yaml` is the primary entry point:
 
 - `docker compose up -d` starts infrastructure only (Postgres, RabbitMQ, MinIO).
-- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Caddy gateway.
+- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + Caddy gateway.
 
 ## App Stack Services
 
@@ -74,6 +74,7 @@ The root `compose.yaml` is the primary entry point:
 | MinIO            | Object storage (S3-compat)  |
 | Identity Service | Auth and user management    |
 | Class Service    | Classes, labs, assets       |
+| Submission Service | Lab submissions and source assets |
 | Gateway (Caddy)  | Reverse proxy / API gateway |
 
 ## App Commands
@@ -95,6 +96,7 @@ make app-down
 - Gateway: `http://localhost:8080`
 - Identity direct: `http://localhost:8081`
 - Class Service direct: `http://localhost:8082`
+- Submission Service direct: `http://localhost:8083`
 - MinIO Console: `http://localhost:9001`
 - MinIO API: `http://localhost:9000`
 - RabbitMQ Management: `http://localhost:15672`
@@ -107,11 +109,16 @@ make app-down
 | `GET /health`       | Gateway (Caddy)  |
 | `GET /identity/health` | Identity Service |
 | `GET /class/health` | Class Service    |
+| `GET /submission/health` | Submission Service |
 | `/api/auth/*`       | Identity Service |
 | `/api/users/*`      | Identity Service |
 | `/api/admin/users*` | Identity Service |
 | `/api/classes*`     | Class Service    |
+| `/api/labs/*/submissions*` | Submission Service |
+| `/api/submissions*` | Submission Service |
 | `/api/labs*`        | Class Service    |
+
+The nested submission route must stay before the generic `/api/labs*` route in `caddy/Caddyfile`.
 
 ## Docker Images
 
@@ -120,6 +127,7 @@ Default images:
 ```bash
 IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:main
 CLASS_IMAGE=dorrissdang/evalcore-class-service:main
+SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:main
 ```
 
 Override in `.env` for a specific tag or commit SHA:
@@ -130,7 +138,34 @@ IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:sha-xxxx
 
 CLASS_IMAGE=dorrissdang/evalcore-class-service:v1
 CLASS_IMAGE=dorrissdang/evalcore-class-service:sha-xxxx
+
+SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:v1
+SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:sha-xxxx
 ```
+
+## MinIO Buckets
+
+The stack creates these buckets on startup:
+
+- `lab-assets`
+- `submission-assets`
+- `evaluation-reports`
+
+`evaluation-reports` is reserved for the Evaluation Service.
+
+## Current Flow
+
+The app smoke test covers the full gateway path:
+
+1. Lecturer creates a class.
+2. Student joins the class.
+3. Lecturer creates a lab and uploads the requirement PDF and Postman collection to MinIO with presigned URLs.
+4. Lecturer completes lab assets and the lab becomes active.
+5. Student creates a submission.
+6. Student uploads a ZIP to MinIO with the submission presigned URL.
+7. Student completes submission assets and the submission becomes submitted.
+8. Student lists and opens their submitted work.
+9. Lecturer lists lab submissions and downloads the submitted ZIP.
 
 ## Credentials
 
@@ -169,7 +204,7 @@ creates root `.env` if missing and also creates legacy `compose/.env` if missing
 
 Do not commit `.env` or `compose/.env`.
 
-If your local `.env` predates OPS-004, add the new CLASS_* variables manually or regenerate it:
+If your local `.env` predates OPS-005, add the new CLASS_* and SUBMISSION_* variables manually or regenerate it:
 
 ```bash
 rm .env && cp .env.example .env
