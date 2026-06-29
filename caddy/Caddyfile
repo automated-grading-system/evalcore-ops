@@ -14,6 +14,18 @@
 		reverse_proxy http://{$IDENTITY_UPSTREAM}
 	}
 
+	# Debug route for checking the Class Service health through Caddy.
+	handle /class/health {
+		rewrite * /health
+		reverse_proxy http://{$CLASS_UPSTREAM}
+	}
+
+	# Debug route for checking the Submission Service health through Caddy.
+	handle /submission/health {
+		rewrite * /health
+		reverse_proxy http://{$SUBMISSION_UPSTREAM}
+	}
+
 	# Identity API routes keep their /api prefixes when proxied upstream.
 	handle /api/auth/* {
 		reverse_proxy http://{$IDENTITY_UPSTREAM}
@@ -27,17 +39,17 @@
 		reverse_proxy http://{$IDENTITY_UPSTREAM}
 	}
 
-	# Optional local Swagger access for the Identity Service.
-	handle /swagger* {
-		reverse_proxy http://{$IDENTITY_UPSTREAM}
+	# Submission nested lab routes must come before generic /api/labs*.
+	handle /api/labs/*/submissions/* {
+		reverse_proxy http://{$SUBMISSION_UPSTREAM}
 	}
 
-	# Full Docker mode uses CLASS_UPSTREAM=class-service:8080.
+	handle /api/labs/*/submissions* {
+		reverse_proxy http://{$SUBMISSION_UPSTREAM}
+	}
 
-	# Debug route for checking the Class Service health through Caddy.
-	handle /class/health {
-		rewrite * /health
-		reverse_proxy http://{$CLASS_UPSTREAM}
+	handle /api/submissions* {
+		reverse_proxy http://{$SUBMISSION_UPSTREAM}
 	}
 
 	# Class API routes keep their /api prefixes when proxied upstream.
