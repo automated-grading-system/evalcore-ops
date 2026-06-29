@@ -57,6 +57,14 @@ if ! command -v curl >/dev/null 2>&1; then
   fail "curl is required for smoke-app."
 fi
 
+if ! command -v zip >/dev/null 2>&1; then
+  fail "zip command is required for submission smoke"
+fi
+
+if ! command -v unzip >/dev/null 2>&1; then
+  fail "unzip command is required for submission smoke"
+fi
+
 # ---------------------------------------------------------------------------
 # Load env
 # ---------------------------------------------------------------------------
@@ -80,8 +88,11 @@ response_body_file="$(mktemp)"
 # Use fixed names so they match the filenames sent in requirementFileName / collectionFileName metadata
 upload_pdf="/tmp/ops-smoke-requirements.pdf"
 upload_json="/tmp/ops-smoke-postman-collection.json"
+submission_dir="/tmp/ops-smoke-submission"
+submission_zip="/tmp/ops-smoke-submission.zip"
+submission_download="/tmp/ops-smoke-submission-download.zip"
 
-trap 'rm -f "${login_body_file}" "${response_body_file}" "${upload_pdf}" "${upload_json}"' EXIT
+trap 'rm -f "${login_body_file}" "${response_body_file}" "${upload_pdf}" "${upload_json}" "${submission_zip}" "${submission_download}"; rm -rf "${submission_dir}"' EXIT
 
 # Minimal valid PDF bytes for the upload test
 printf '%%PDF-1.0\n1 0 obj<</Type /Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type /Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type /Page/MediaBox[0 0 3 3]>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%%%EOF' > "${upload_pdf}"
@@ -93,7 +104,7 @@ printf '{"info":{"name":"smoke-test","schema":"https://schema.getpostman.com/jso
 # 1. GATEWAY HEALTH
 # ===========================================================================
 
-log "=== [1/13] Gateway health ==="
+log "=== [1/25] Gateway health ==="
 retry "Gateway health" 12 5 curl -fsS "${GATEWAY_URL}/health" >/dev/null \
   || fail "Gateway health endpoint is not reachable. Is the gateway running? Check status with make app-ps."
 log "Gateway health OK."
@@ -102,7 +113,7 @@ log "Gateway health OK."
 # 2. IDENTITY HEALTH THROUGH GATEWAY
 # ===========================================================================
 
-log "=== [2/13] Identity health through gateway ==="
+log "=== [2/25] Identity health through gateway ==="
 retry "Identity health through gateway" 12 5 curl -fsS "${GATEWAY_URL}/identity/health" >/dev/null \
   || fail "Identity health through gateway is not reachable. Is identity-service healthy? Check status with make app-ps and logs with make app-logs."
 log "Identity health OK."
@@ -111,7 +122,7 @@ log "Identity health OK."
 # 3. LECTURER LOGIN
 # ===========================================================================
 
-log "=== [3/13] Lecturer login through gateway ==="
+log "=== [3/25] Lecturer login through gateway ==="
 lecturer_status="$(
   curl -sS \
     -o "${login_body_file}" \
@@ -150,7 +161,7 @@ log "Lecturer login OK."
 # 4. STUDENT LOGIN
 # ===========================================================================
 
-log "=== [4/13] Student login through gateway ==="
+log "=== [4/25] Student login through gateway ==="
 student_status="$(
   curl -sS \
     -o "${login_body_file}" \
@@ -195,7 +206,7 @@ log "/api/users/me OK."
 # 5. CLASS SERVICE HEALTH THROUGH GATEWAY
 # ===========================================================================
 
-log "=== [5/13] Class Service health through gateway ==="
+log "=== [5/25] Class Service health through gateway ==="
 retry "Class Service health" 24 5 curl -fsS "${GATEWAY_URL}/class/health" >/dev/null \
   || fail "Class Service health endpoint is not reachable at ${GATEWAY_URL}/class/health. Is class-service running? Check status with make app-ps and logs with make app-logs."
 log "Class Service health OK."
@@ -219,7 +230,7 @@ fi
 # 6. LECTURER CREATES CLASS
 # ===========================================================================
 
-log "=== [6/13] Lecturer creates class through gateway ==="
+log "=== [6/25] Lecturer creates class through gateway ==="
 create_class_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -260,7 +271,7 @@ log "Lecturer created class ID: ${class_id}"
 # 7. STUDENT JOINS CLASS
 # ===========================================================================
 
-log "=== [7/13] Student joins class through gateway ==="
+log "=== [7/25] Student joins class through gateway ==="
 join_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -282,7 +293,7 @@ log "Student joined class OK."
 # 8. LECTURER CREATES LAB
 # ===========================================================================
 
-log "=== [8/13] Lecturer creates lab through gateway ==="
+log "=== [8/25] Lecturer creates lab through gateway ==="
 create_lab_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -346,7 +357,7 @@ fi
 # 9. VERIFY PRESIGNED UPLOAD URLS USE MINIO PUBLIC ENDPOINT
 # ===========================================================================
 
-log "=== [9/13] Checking lab assets upload URLs use MinIO public endpoint ==="
+log "=== [9/25] Checking lab assets upload URLs use MinIO public endpoint ==="
 assets_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -372,7 +383,7 @@ log "Presigned URL endpoint check OK (or lab assets endpoint skipped on fresh la
 # 10. UPLOAD REQUIREMENT PDF AND POSTMAN COLLECTION TO PRESIGNED URLS
 # ===========================================================================
 
-log "=== [10/13] Fetching presigned upload URLs for lab assets ==="
+log "=== [10/25] Fetching presigned upload URLs for lab assets ==="
 
 # Upload URLs were already returned inline by the create-lab response.
 # Fall back to a separate endpoint only if they were not present.
@@ -436,7 +447,7 @@ fi
 # 11. COMPLETE LAB ASSETS
 # ===========================================================================
 
-log "=== [11/13] Completing lab assets through gateway ==="
+log "=== [11/25] Completing lab assets through gateway ==="
 complete_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -476,7 +487,7 @@ log "Lab assets complete OK (HTTP ${complete_status}, status=${complete_lab_stat
 # 12. STUDENT LISTS CLASS LABS
 # ===========================================================================
 
-log "=== [12/13] Student lists class labs through gateway ==="
+log "=== [12/25] Student lists class labs through gateway ==="
 list_labs_status="$(
   curl -sS \
     -o "${response_body_file}" \
@@ -497,7 +508,7 @@ log "Student list class labs OK."
 #     LECTURER CAN GET COLLECTION URL
 # ===========================================================================
 
-log "=== [13/13] Lab asset access controls ==="
+log "=== [13/25] Lab asset access controls ==="
 
 # Student gets requirement URL — must be 200 after assets are complete and lab is active
 req_status="$(
@@ -557,6 +568,328 @@ else
 fi
 
 # ===========================================================================
+# 14. SUBMISSION SERVICE HEALTH THROUGH GATEWAY
+# ===========================================================================
+
+log "=== [14/25] Submission Service health through gateway ==="
+retry "Submission Service health" 24 5 curl -fsS "${GATEWAY_URL}/submission/health" -o "${response_body_file}" \
+  || fail "Submission Service health endpoint is not reachable at ${GATEWAY_URL}/submission/health. Is submission-service running? Check status with make app-ps and logs with make app-logs."
+
+if ! jq -e '.success == true' "${response_body_file}" >/dev/null 2>&1; then
+  log "Submission health response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Submission health did not return success=true."
+fi
+log "Submission Service health OK."
+
+# ===========================================================================
+# 15. STUDENT CREATES SUBMISSION
+# ===========================================================================
+
+log "=== [15/25] Student creates submission through gateway ==="
+create_submission_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${student_token}" \
+    -d '{"projectFileName":"ops-smoke-submission.zip","notes":"Created by smoke-app"}' \
+    "${GATEWAY_URL}/api/labs/${lab_id}/submissions"
+)" || fail "Create submission curl failed."
+
+if [[ "${create_submission_status}" != "200" && "${create_submission_status}" != "201" ]]; then
+  log "Create submission HTTP status: ${create_submission_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Student create submission failed. HTTP ${create_submission_status}."
+fi
+
+if ! jq -e '.success == true' "${response_body_file}" >/dev/null 2>&1; then
+  log "Create submission response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Create submission response did not return success=true."
+fi
+
+submission_id="$(jq -r '.data.submission.id // empty' "${response_body_file}")"
+submission_status="$(jq -r '.data.submission.status // empty' "${response_body_file}")"
+project_upload_url="$(jq -r '.data.upload.projectUploadUrl // empty' "${response_body_file}")"
+
+if [[ -z "${submission_id}" || "${submission_id}" == "null" ]]; then
+  log "Create submission response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Create submission did not return data.submission.id."
+fi
+
+if [[ "${submission_status}" != "pending_assets" ]]; then
+  log "Create submission response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Submission status after create is '${submission_status}', expected 'pending_assets'."
+fi
+
+if [[ "${project_upload_url}" != http://localhost:9000/submission-assets/* ]]; then
+  log "Create submission response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Submission project upload URL does not use http://localhost:9000/submission-assets/."
+fi
+log "Student created submission ID: ${submission_id}"
+
+# ===========================================================================
+# 16. CREATE AND UPLOAD SUBMISSION ZIP
+# ===========================================================================
+
+log "=== [16/25] Uploading submission ZIP to presigned URL ==="
+rm -rf "${submission_dir}"
+mkdir -p "${submission_dir}"
+printf 'Created by smoke-app\n' > "${submission_dir}/README.md"
+rm -f "${submission_zip}"
+(
+  cd "${submission_dir}"
+  zip -qr "${submission_zip}" README.md
+)
+
+submission_upload_status="$(
+  curl -sS \
+    -o /dev/null \
+    -w "%{http_code}" \
+    -X PUT \
+    --upload-file "${submission_zip}" \
+    "${project_upload_url}"
+)" || submission_upload_status="000"
+
+if [[ "${submission_upload_status}" != "200" ]]; then
+  fail "Submission ZIP upload failed. Expected HTTP 200, got HTTP ${submission_upload_status}."
+fi
+log "Submission ZIP upload OK."
+
+# ===========================================================================
+# 17. COMPLETE SUBMISSION ASSETS
+# ===========================================================================
+
+log "=== [17/25] Completing submission assets through gateway ==="
+complete_submission_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${student_token}" \
+    -d '{"projectUploaded":true}' \
+    "${GATEWAY_URL}/api/submissions/${submission_id}/assets/complete"
+)" || fail "Submission assets complete curl failed."
+
+if [[ "${complete_submission_status}" != "200" ]]; then
+  log "Submission assets complete HTTP status: ${complete_submission_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Submission assets complete failed. HTTP ${complete_submission_status}."
+fi
+
+if ! jq -e '.success == true and .data.status == "submitted" and (.data.submittedAt != null) and (.data.assetsCompletedAt != null)' "${response_body_file}" >/dev/null 2>&1; then
+  log "Submission assets complete response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Submission was not marked submitted with submittedAt and assetsCompletedAt."
+fi
+log "Submission assets complete OK."
+
+# ===========================================================================
+# 18. STUDENT LISTS OWN SUBMISSIONS
+# ===========================================================================
+
+log "=== [18/25] Student lists own submissions through gateway ==="
+student_submissions_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -H "Authorization: Bearer ${student_token}" \
+    "${GATEWAY_URL}/api/submissions/my?page=1&pageSize=20"
+)" || fail "Student list own submissions curl failed."
+
+if [[ "${student_submissions_status}" != "200" ]]; then
+  log "Student list own submissions HTTP status: ${student_submissions_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Student list own submissions failed. HTTP ${student_submissions_status}."
+fi
+
+if ! jq -e --arg id "${submission_id}" '.. | objects | select((.id? // .submissionId? // "") == $id)' "${response_body_file}" >/dev/null 2>&1; then
+  log "Student list own submissions response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Student own submissions list did not include created submission ${submission_id}."
+fi
+log "Student own submissions list includes created submission."
+
+# ===========================================================================
+# 19. STUDENT LISTS OWN SUBMISSIONS FOR LAB
+# ===========================================================================
+
+log "=== [19/25] Student lists own lab submissions through gateway ==="
+student_lab_submissions_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -H "Authorization: Bearer ${student_token}" \
+    "${GATEWAY_URL}/api/labs/${lab_id}/submissions/my"
+)" || fail "Student list own lab submissions curl failed."
+
+if [[ "${student_lab_submissions_status}" != "200" ]]; then
+  log "Student list own lab submissions HTTP status: ${student_lab_submissions_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Student list own lab submissions failed. HTTP ${student_lab_submissions_status}."
+fi
+
+if ! jq -e --arg id "${submission_id}" '.. | objects | select((.id? // .submissionId? // "") == $id)' "${response_body_file}" >/dev/null 2>&1; then
+  log "Student list own lab submissions response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Student own lab submissions list did not include created submission ${submission_id}."
+fi
+log "Student own lab submissions list includes created submission."
+
+# ===========================================================================
+# 20. LECTURER LISTS LAB SUBMISSIONS
+# ===========================================================================
+
+log "=== [20/25] Lecturer lists lab submissions through gateway ==="
+lecturer_lab_submissions_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -H "Authorization: Bearer ${lecturer_token}" \
+    "${GATEWAY_URL}/api/labs/${lab_id}/submissions?page=1&pageSize=20"
+)" || fail "Lecturer list lab submissions curl failed."
+
+if [[ "${lecturer_lab_submissions_status}" != "200" ]]; then
+  log "Lecturer list lab submissions HTTP status: ${lecturer_lab_submissions_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Lecturer list lab submissions failed. HTTP ${lecturer_lab_submissions_status}."
+fi
+
+if ! jq -e --arg id "${submission_id}" '.. | objects | select((.id? // .submissionId? // "") == $id)' "${response_body_file}" >/dev/null 2>&1; then
+  log "Lecturer list lab submissions response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Lecturer lab submissions list did not include created submission ${submission_id}."
+fi
+log "Lecturer lab submissions list includes created submission."
+
+# ===========================================================================
+# 21. STUDENT GETS SUBMISSION DETAIL
+# ===========================================================================
+
+log "=== [21/25] Student gets submission detail through gateway ==="
+submission_detail_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -H "Authorization: Bearer ${student_token}" \
+    "${GATEWAY_URL}/api/submissions/${submission_id}"
+)" || fail "Student get submission detail curl failed."
+
+if [[ "${submission_detail_status}" != "200" ]]; then
+  log "Student get submission detail HTTP status: ${submission_detail_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Student get submission detail failed. HTTP ${submission_detail_status}."
+fi
+
+detail_status="$(jq -r '.data.status // .status // empty' "${response_body_file}")"
+if [[ "${detail_status}" != "submitted" ]]; then
+  log "Submission detail response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Submission detail status is '${detail_status}', expected 'submitted'."
+fi
+log "Submission detail OK."
+
+# ===========================================================================
+# 22. LECTURER GETS SOURCE ZIP PRESIGNED URL
+# ===========================================================================
+
+log "=== [22/25] Lecturer gets source ZIP URL through gateway ==="
+source_url_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -H "Authorization: Bearer ${lecturer_token}" \
+    "${GATEWAY_URL}/api/submissions/${submission_id}/assets/source"
+)" || fail "Lecturer get source ZIP URL curl failed."
+
+if [[ "${source_url_status}" != "200" ]]; then
+  log "Lecturer get source ZIP URL HTTP status: ${source_url_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Lecturer get source ZIP URL failed. HTTP ${source_url_status}."
+fi
+
+if ! jq -e '.success == true' "${response_body_file}" >/dev/null 2>&1; then
+  log "Source ZIP URL response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Source ZIP URL response did not return success=true."
+fi
+
+source_download_url="$(jq -r '.data.url // empty' "${response_body_file}")"
+if [[ "${source_download_url}" != http://localhost:9000/submission-assets/* ]]; then
+  log "Source ZIP URL response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Source ZIP URL does not use http://localhost:9000/submission-assets/."
+fi
+log "Lecturer source ZIP URL OK."
+
+# ===========================================================================
+# 23. DOWNLOAD SOURCE ZIP
+# ===========================================================================
+
+log "=== [23/25] Downloading submitted source ZIP ==="
+download_status="$(
+  curl -sS \
+    -o "${submission_download}" \
+    -w "%{http_code}" \
+    "${source_download_url}"
+)" || download_status="000"
+
+if [[ "${download_status}" != "200" ]]; then
+  fail "Source ZIP download failed. Expected HTTP 200, got HTTP ${download_status}."
+fi
+
+download_size="$(wc -c < "${submission_download}" | tr -d '[:space:]')"
+if [[ "${download_size}" -le 0 ]]; then
+  fail "Source ZIP download was empty."
+fi
+
+unzip -l "${submission_download}" >/dev/null \
+  || fail "Downloaded source ZIP is not a valid zip archive."
+log "Source ZIP download OK (${download_size} bytes)."
+
+# ===========================================================================
+# 24. NEGATIVE SUBMISSION FILE TYPE VALIDATION
+# ===========================================================================
+
+log "=== [24/25] Invalid submission file type is rejected ==="
+invalid_submission_status="$(
+  curl -sS \
+    -o "${response_body_file}" \
+    -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${student_token}" \
+    -d '{"projectFileName":"bad-file.txt","notes":"Should fail"}' \
+    "${GATEWAY_URL}/api/labs/${lab_id}/submissions"
+)" || fail "Invalid submission create curl failed."
+
+if [[ "${invalid_submission_status}" != "400" ]]; then
+  log "Invalid submission create HTTP status: ${invalid_submission_status}"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Invalid submission file type should return HTTP 400."
+fi
+
+if ! jq -e '.. | objects | select((.code? // "") == "SUBMISSION_INVALID_FILE_TYPE" or (.code? // "") == "VALIDATION_ERROR")' "${response_body_file}" >/dev/null 2>&1; then
+  log "Invalid submission create response body:"
+  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
+  fail "Invalid submission file type did not return SUBMISSION_INVALID_FILE_TYPE or VALIDATION_ERROR."
+fi
+log "Invalid submission file type rejected OK."
+
+# ===========================================================================
+# 25. SUBMISSION FLOW COMPLETE
+# ===========================================================================
+
+log "=== [25/25] Submission flow complete ==="
+log "Submission flow OK."
+
+# ===========================================================================
 # SUMMARY
 # ===========================================================================
 
@@ -566,6 +899,8 @@ log "All smoke-app checks passed."
 log "  Gateway:            ${GATEWAY_URL}/health"
 log "  Identity (gateway): ${GATEWAY_URL}/identity/health"
 log "  Class (gateway):    ${GATEWAY_URL}/class/health"
+log "  Submission (gateway): ${GATEWAY_URL}/submission/health"
 log "  Created class ID:   ${class_id}"
 log "  Created lab ID:     ${lab_id}"
+log "  Submission ID:      ${submission_id}"
 log "============================================================"
