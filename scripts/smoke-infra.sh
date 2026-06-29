@@ -62,9 +62,11 @@ log "Checking required MinIO buckets..."
 retry "MinIO buckets" 12 5 "${COMPOSE[@]}" run --rm --entrypoint /bin/sh minio-init -c "
   mc alias set local http://minio:9000 '${S3_ACCESS_KEY}' '${S3_SECRET_KEY}' >/dev/null &&
   mc ls local/lab-assets >/dev/null &&
-  mc ls local/submissions >/dev/null &&
-  mc ls local/evaluation-artifacts >/dev/null
-" || fail "One or more required MinIO buckets are missing."
-log "Required MinIO buckets exist."
+  mc ls local/submission-assets >/dev/null &&
+  mc ls local/evaluation-reports >/dev/null &&
+  ! mc ls local/submissions >/dev/null 2>&1 &&
+  ! mc ls local/evaluation-artifacts >/dev/null 2>&1
+" || fail "One or more required MinIO buckets are missing, or a stale bucket name exists."
+log "Required MinIO buckets exist and stale bucket names are absent."
 
 log "All infrastructure smoke checks passed."
