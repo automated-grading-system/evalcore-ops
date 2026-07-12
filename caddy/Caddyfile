@@ -1,68 +1,86 @@
 :8080 {
-	# Gateway health is served directly by Caddy.
-	handle /health {
-		header Content-Type application/json
-		respond `{"status":"healthy","service":"ags-gateway"}` 200
-	}
+	route {
+		# Gateway health is served directly by Caddy.
+		handle /health {
+			header Content-Type application/json
+			respond `{"status":"healthy","service":"ags-gateway"}` 200
+		}
 
-	# Full Docker mode uses IDENTITY_UPSTREAM=identity-service:8080.
-	# Legacy host mode can use IDENTITY_UPSTREAM=host.docker.internal:8081.
+		# Full Docker mode uses IDENTITY_UPSTREAM=identity-service:8080.
+		# Legacy host mode can use IDENTITY_UPSTREAM=host.docker.internal:8081.
 
-	# Debug route for checking the Identity Service through Caddy.
-	handle /identity/health {
-		rewrite * /health
-		reverse_proxy http://{$IDENTITY_UPSTREAM}
-	}
+		# Debug route for checking the Identity Service through Caddy.
+		handle /identity/health {
+			rewrite * /health
+			reverse_proxy http://{$IDENTITY_UPSTREAM}
+		}
 
-	# Debug route for checking the Class Service health through Caddy.
-	handle /class/health {
-		rewrite * /health
-		reverse_proxy http://{$CLASS_UPSTREAM}
-	}
+		# Debug route for checking the Class Service health through Caddy.
+		handle /class/health {
+			rewrite * /health
+			reverse_proxy http://{$CLASS_UPSTREAM}
+		}
 
-	# Debug route for checking the Submission Service health through Caddy.
-	handle /submission/health {
-		rewrite * /health
-		reverse_proxy http://{$SUBMISSION_UPSTREAM}
-	}
+		# Debug route for checking the Submission Service health through Caddy.
+		handle /submission/health {
+			rewrite * /health
+			reverse_proxy http://{$SUBMISSION_UPSTREAM}
+		}
 
-	# Identity API routes keep their /api prefixes when proxied upstream.
-	handle /api/auth/* {
-		reverse_proxy http://{$IDENTITY_UPSTREAM}
-	}
+		# Debug route for checking the Evaluation Service health through Caddy.
+		handle /evaluation/health {
+			rewrite * /health
+			reverse_proxy http://{$EVALUATION_UPSTREAM}
+		}
 
-	handle /api/users/* {
-		reverse_proxy http://{$IDENTITY_UPSTREAM}
-	}
+		# Identity API routes keep their /api prefixes when proxied upstream.
+		handle /api/auth/* {
+			reverse_proxy http://{$IDENTITY_UPSTREAM}
+		}
 
-	handle /api/admin/users* {
-		reverse_proxy http://{$IDENTITY_UPSTREAM}
-	}
+		handle /api/users/* {
+			reverse_proxy http://{$IDENTITY_UPSTREAM}
+		}
 
-	# Submission nested lab routes must come before generic /api/labs*.
-	handle /api/labs/*/submissions/* {
-		reverse_proxy http://{$SUBMISSION_UPSTREAM}
-	}
+		handle /api/admin/users* {
+			reverse_proxy http://{$IDENTITY_UPSTREAM}
+		}
 
-	handle /api/labs/*/submissions* {
-		reverse_proxy http://{$SUBMISSION_UPSTREAM}
-	}
+		# Submission nested lab routes must come before generic /api/labs*.
+		handle /api/labs/*/submissions/* {
+			reverse_proxy http://{$SUBMISSION_UPSTREAM}
+		}
 
-	handle /api/submissions* {
-		reverse_proxy http://{$SUBMISSION_UPSTREAM}
-	}
+		handle /api/labs/*/submissions* {
+			reverse_proxy http://{$SUBMISSION_UPSTREAM}
+		}
 
-	# Class API routes keep their /api prefixes when proxied upstream.
-	handle /api/classes* {
-		reverse_proxy http://{$CLASS_UPSTREAM}
-	}
+		# This outer route block preserves this order ahead of generic submissions.
+		@submission_evaluations path_regexp submission_evaluations ^/api/submissions/[^/]+/evaluations(?:/.*)?$
+		handle @submission_evaluations {
+			reverse_proxy http://{$EVALUATION_UPSTREAM}
+		}
 
-	handle /api/labs* {
-		reverse_proxy http://{$CLASS_UPSTREAM}
-	}
+		handle /api/evaluations* {
+			reverse_proxy http://{$EVALUATION_UPSTREAM}
+		}
 
-	handle {
-		header Content-Type application/json
-		respond `{"error":"route_not_found"}` 404
+		handle /api/submissions* {
+			reverse_proxy http://{$SUBMISSION_UPSTREAM}
+		}
+
+		# Class API routes keep their /api prefixes when proxied upstream.
+		handle /api/classes* {
+			reverse_proxy http://{$CLASS_UPSTREAM}
+		}
+
+		handle /api/labs* {
+			reverse_proxy http://{$CLASS_UPSTREAM}
+		}
+
+		handle {
+			header Content-Type application/json
+			respond `{"error":"route_not_found"}` 404
+		}
 	}
 }

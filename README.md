@@ -63,7 +63,7 @@ make app-down
 The root `compose.yaml` is the primary entry point:
 
 - `docker compose up -d` starts infrastructure only (Postgres, RabbitMQ, MinIO).
-- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + Caddy gateway + Dozzle.
+- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + split Evaluation API/runner + Caddy gateway + Dozzle.
 
 ## App Stack Services
 
@@ -75,6 +75,8 @@ The root `compose.yaml` is the primary entry point:
 | Identity Service | Auth and user management    |
 | Class Service    | Classes, labs, assets       |
 | Submission Service | Lab submissions and source assets |
+| Evaluation Service | Public evaluation API and event consumer |
+| Evaluation Runner | Internal Docker sandbox worker (no public port) |
 | Gateway (Caddy)  | Reverse proxy / API gateway |
 | Dozzle           | Local Docker container log viewer |
 
@@ -86,6 +88,7 @@ make app-pull
 make app-up
 make app-ps
 make smoke-app
+make smoke-evaluation
 make app-logs
 make app-down
 ```
@@ -98,6 +101,7 @@ make app-down
 - Identity direct: `http://localhost:8081`
 - Class Service direct: `http://localhost:8082`
 - Submission Service direct: `http://localhost:8083`
+- Evaluation Service direct: `http://localhost:8084`
 - MinIO API: `http://localhost:9000`
 - MinIO Console: `http://localhost:9001`
 - RabbitMQ Console: `http://localhost:15672`
@@ -112,11 +116,14 @@ make app-down
 | `GET /identity/health` | Identity Service |
 | `GET /class/health` | Class Service    |
 | `GET /submission/health` | Submission Service |
+| `GET /evaluation/health` | Evaluation Service |
 | `/api/auth/*`       | Identity Service |
 | `/api/users/*`      | Identity Service |
 | `/api/admin/users*` | Identity Service |
 | `/api/classes*`     | Class Service    |
 | `/api/labs/*/submissions*` | Submission Service |
+| `/api/submissions/*/evaluations*` | Evaluation Service |
+| `/api/evaluations*` | Evaluation Service |
 | `/api/submissions*` | Submission Service |
 | `/api/labs*`        | Class Service    |
 
@@ -130,6 +137,7 @@ Default images:
 IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:main
 CLASS_IMAGE=dorrissdang/evalcore-class-service:main
 SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:main
+EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:main
 ```
 
 Override in `.env` for a specific tag or commit SHA:
@@ -143,6 +151,9 @@ CLASS_IMAGE=dorrissdang/evalcore-class-service:sha-xxxx
 
 SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:v1
 SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:sha-xxxx
+
+EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:v1
+EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:sha-xxxx
 ```
 
 ## MinIO Buckets
@@ -188,6 +199,9 @@ The app smoke test covers the full gateway path:
 7. Student completes submission assets and the submission becomes submitted.
 8. Student lists and opens their submitted work.
 9. Lecturer lists lab submissions and downloads the submitted ZIP.
+10. Evaluation consumes `SubmissionSubmitted`, runs the isolated Docker Compose/Newman sandbox, and publishes `EvaluationCompleted`.
+
+`make smoke-evaluation` uses the known-good fixture under `../test/dist/evaluation`, exercises the automatic consumer path only, and verifies the final score, artifacts, published outbox event, and sandbox cleanup. Override the fixture paths with `EVAL_FIXTURE_ZIP` and `EVAL_COLLECTION_JSON` when needed.
 
 ## Credentials
 

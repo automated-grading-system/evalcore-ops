@@ -10,7 +10,7 @@ APP_COMPOSE := docker compose --env-file $(ROOT_ENV_FILE)
 
 .PHONY: env infra-up infra-down infra-reset infra-logs infra-ps smoke-infra
 .PHONY: gateway-up gateway-down gateway-restart gateway-logs gateway-ps smoke-auth auth-stack-up auth-stack-down
-.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app
+.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation
 .PHONY: services-pull services-up services-down web-up stack-up stack-down
 
 env:
@@ -83,6 +83,9 @@ app-logs: env
 
 smoke-app: env
 	./scripts/smoke-auth-gateway.sh
+
+smoke-evaluation: env
+	./scripts/smoke-evaluation.sh
 
 auth-stack-up:
 	$(MAKE) infra-up

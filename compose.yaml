@@ -200,6 +200,134 @@ services:
     # The published image may not include curl/wget in its runtime layer.
     # Readiness is verified externally by scripts/smoke-auth-gateway.sh.
 
+  evaluation-service:
+    profiles:
+      - app
+    image: ${EVALUATION_IMAGE:-dorrissdang/evalcore-evaluation-service:main}
+    container_name: ${EVALUATION_CONTAINER_NAME:-ags-evaluation-service}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      AUTO_APPLY_MIGRATIONS: ${AUTO_APPLY_MIGRATIONS:-true}
+      DATABASE_URL: ${EVALUATION_DATABASE_URL:-Host=postgres;Port=5432;Database=ags;Username=ags;Password=ags_password}
+      JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
+      JWT_ISSUER: ${JWT_ISSUER:-ags}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
+      CLASS_SERVICE_BASE_URL: http://class-service:8080
+      SUBMISSION_SERVICE_BASE_URL: http://submission-service:8080
+      S3_INTERNAL_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-ags_password}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
+      LAB_ASSETS_BUCKET: ${LAB_ASSETS_BUCKET:-lab-assets}
+      SUBMISSION_ASSETS_BUCKET: ${SUBMISSION_ASSETS_BUCKET:-submission-assets}
+      EVALUATION_REPORTS_BUCKET: ${EVALUATION_REPORTS_BUCKET:-evaluation-reports}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-ags}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-ags_password}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-ags.domain.events}
+      SUBMISSION_SUBMITTED_ROUTING_KEY: ${SUBMISSION_SUBMITTED_ROUTING_KEY:-submission.submitted.v1}
+      EVALUATION_COMPLETED_ROUTING_KEY: ${EVALUATION_COMPLETED_ROUTING_KEY:-evaluation.completed.v1}
+      EVALUATION_PROCESS_ROLE: api
+    ports:
+      - "${EVALUATION_PUBLIC_PORT:-8084}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      class-service:
+        condition: service_started
+      submission-service:
+        condition: service_started
+    networks:
+      - ags-network
+    restart: unless-stopped
+    # Deliberately no Docker socket or evaluation workspace mount: this is the public API role.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  evaluation-runner:
+    profiles:
+      - app
+    image: ${EVALUATION_IMAGE:-dorrissdang/evalcore-evaluation-service:main}
+    container_name: ${EVALUATION_RUNNER_CONTAINER_NAME:-ags-evaluation-runner}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      AUTO_APPLY_MIGRATIONS: ${AUTO_APPLY_MIGRATIONS:-true}
+      DATABASE_URL: ${EVALUATION_DATABASE_URL:-Host=postgres;Port=5432;Database=ags;Username=ags;Password=ags_password}
+      JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
+      JWT_ISSUER: ${JWT_ISSUER:-ags}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
+      CLASS_SERVICE_BASE_URL: http://class-service:8080
+      SUBMISSION_SERVICE_BASE_URL: http://submission-service:8080
+      S3_INTERNAL_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-ags_password}
+      S3_USE_SSL: ${S3_USE_SSL:-false}
+      LAB_ASSETS_BUCKET: ${LAB_ASSETS_BUCKET:-lab-assets}
+      SUBMISSION_ASSETS_BUCKET: ${SUBMISSION_ASSETS_BUCKET:-submission-assets}
+      EVALUATION_REPORTS_BUCKET: ${EVALUATION_REPORTS_BUCKET:-evaluation-reports}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-ags}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-ags_password}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-ags.domain.events}
+      SUBMISSION_SUBMITTED_ROUTING_KEY: ${SUBMISSION_SUBMITTED_ROUTING_KEY:-submission.submitted.v1}
+      EVALUATION_COMPLETED_ROUTING_KEY: ${EVALUATION_COMPLETED_ROUTING_KEY:-evaluation.completed.v1}
+      EVALUATION_PROCESS_ROLE: runner
+      EVALUATION_RUNNER_CONCURRENCY: ${EVALUATION_RUNNER_CONCURRENCY:-1}
+      EVALUATION_WORKDIR: /tmp/evalcore/evaluations
+      EVALUATION_APP_SERVICE_NAME: ${EVALUATION_APP_SERVICE_NAME:-app}
+      EVALUATION_APP_INTERNAL_PORT: ${EVALUATION_APP_INTERNAL_PORT:-8080}
+      EVALUATION_APP_HEALTH_PATH: ${EVALUATION_APP_HEALTH_PATH:-/health}
+      EVALUATION_POSTMAN_BASE_URL_VARIABLE: ${EVALUATION_POSTMAN_BASE_URL_VARIABLE:-baseUrl}
+      EVALUATION_BUILD_TIMEOUT_SECONDS: ${EVALUATION_BUILD_TIMEOUT_SECONDS:-180}
+      EVALUATION_STARTUP_TIMEOUT_SECONDS: ${EVALUATION_STARTUP_TIMEOUT_SECONDS:-90}
+      EVALUATION_NEWMAN_TIMEOUT_SECONDS: ${EVALUATION_NEWMAN_TIMEOUT_SECONDS:-120}
+      EVALUATION_TOTAL_TIMEOUT_SECONDS: ${EVALUATION_TOTAL_TIMEOUT_SECONDS:-420}
+      EVALUATION_CONTAINER_MEMORY_LIMIT: ${EVALUATION_CONTAINER_MEMORY_LIMIT:-768m}
+      EVALUATION_CONTAINER_CPUS: ${EVALUATION_CONTAINER_CPUS:-1.0}
+      EVALUATION_CONTAINER_PIDS_LIMIT: ${EVALUATION_CONTAINER_PIDS_LIMIT:-256}
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/evalcore/evaluations:/tmp/evalcore/evaluations
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      class-service:
+        condition: service_started
+      submission-service:
+        condition: service_started
+      evaluation-service:
+        condition: service_healthy
+    networks:
+      - ags-network
+    restart: unless-stopped
+
   gateway:
     profiles:
       - app
@@ -209,14 +337,20 @@ services:
       IDENTITY_UPSTREAM: ${IDENTITY_UPSTREAM:-identity-service:8080}
       CLASS_UPSTREAM: ${CLASS_UPSTREAM:-class-service:8080}
       SUBMISSION_UPSTREAM: ${SUBMISSION_UPSTREAM:-submission-service:8080}
+      EVALUATION_UPSTREAM: ${EVALUATION_UPSTREAM:-evaluation-service:8080}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
-      - identity-service
-      - class-service
-      - submission-service
+      identity-service:
+        condition: service_started
+      class-service:
+        condition: service_started
+      submission-service:
+        condition: service_started
+      evaluation-service:
+        condition: service_healthy
     networks:
       - ags-network
     restart: unless-stopped
