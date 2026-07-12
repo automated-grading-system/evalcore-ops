@@ -33,6 +33,12 @@
 			reverse_proxy http://{$EVALUATION_UPSTREAM}
 		}
 
+		# Identity internal routes deliberately have no public proxy route.
+		handle /notification/health {
+			rewrite * /health
+			reverse_proxy http://{$NOTIFICATION_UPSTREAM}
+		}
+
 		# Identity API routes keep their /api prefixes when proxied upstream.
 		handle /api/auth/* {
 			reverse_proxy http://{$IDENTITY_UPSTREAM}
@@ -63,6 +69,10 @@
 
 		handle /api/evaluations* {
 			reverse_proxy http://{$EVALUATION_UPSTREAM}
+		}
+
+		handle /api/notifications* {
+			reverse_proxy http://{$NOTIFICATION_UPSTREAM}
 		}
 
 		handle /api/submissions* {

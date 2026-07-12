@@ -63,7 +63,7 @@ make app-down
 The root `compose.yaml` is the primary entry point:
 
 - `docker compose up -d` starts infrastructure only (Postgres, RabbitMQ, MinIO).
-- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + split Evaluation API/runner + Caddy gateway + Dozzle.
+- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + split Evaluation API/runner + Notification Service + Caddy gateway + Dozzle.
 
 ## App Stack Services
 
@@ -77,6 +77,7 @@ The root `compose.yaml` is the primary entry point:
 | Submission Service | Lab submissions and source assets |
 | Evaluation Service | Public evaluation API and event consumer |
 | Evaluation Runner | Internal Docker sandbox worker (no public port) |
+| Notification Service | Evaluation result notifications and SMTP delivery |
 | Gateway (Caddy)  | Reverse proxy / API gateway |
 | Dozzle           | Local Docker container log viewer |
 
@@ -89,6 +90,7 @@ make app-up
 make app-ps
 make smoke-app
 make smoke-evaluation
+make smoke-notification
 make app-logs
 make app-down
 ```
@@ -102,6 +104,7 @@ make app-down
 - Class Service direct: `http://localhost:8082`
 - Submission Service direct: `http://localhost:8083`
 - Evaluation Service direct: `http://localhost:8084`
+- Notification Service direct: `http://localhost:8086`
 - MinIO API: `http://localhost:9000`
 - MinIO Console: `http://localhost:9001`
 - RabbitMQ Console: `http://localhost:15672`
@@ -117,6 +120,7 @@ make app-down
 | `GET /class/health` | Class Service    |
 | `GET /submission/health` | Submission Service |
 | `GET /evaluation/health` | Evaluation Service |
+| `GET /notification/health` | Notification Service |
 | `/api/auth/*`       | Identity Service |
 | `/api/users/*`      | Identity Service |
 | `/api/admin/users*` | Identity Service |
@@ -124,6 +128,7 @@ make app-down
 | `/api/labs/*/submissions*` | Submission Service |
 | `/api/submissions/*/evaluations*` | Evaluation Service |
 | `/api/evaluations*` | Evaluation Service |
+| `/api/notifications*` | Notification Service |
 | `/api/submissions*` | Submission Service |
 | `/api/labs*`        | Class Service    |
 
@@ -138,6 +143,7 @@ IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:main
 CLASS_IMAGE=dorrissdang/evalcore-class-service:main
 SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:main
 EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:main
+NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:main
 ```
 
 Override in `.env` for a specific tag or commit SHA:
@@ -154,6 +160,9 @@ SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:sha-xxxx
 
 EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:v1
 EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:sha-xxxx
+
+NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:v1
+NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:sha-xxxx
 ```
 
 ## MinIO Buckets
@@ -200,8 +209,11 @@ The app smoke test covers the full gateway path:
 8. Student lists and opens their submitted work.
 9. Lecturer lists lab submissions and downloads the submitted ZIP.
 10. Evaluation consumes `SubmissionSubmitted`, runs the isolated Docker Compose/Newman sandbox, and publishes `EvaluationCompleted`.
+11. Notification consumes `EvaluationCompleted`, resolves the student through Identity's protected internal endpoint, and creates an email delivery record. Set `NOTIFICATION_EMAIL_ENABLED=true` plus SMTP settings in `.env` to send email; otherwise the delivery is recorded as `skipped`.
 
 `make smoke-evaluation` uses the known-good fixture under `../test/dist/evaluation`, exercises the automatic consumer path only, and verifies the final score, artifacts, published outbox event, and sandbox cleanup. Override the fixture paths with `EVAL_FIXTURE_ZIP` and `EVAL_COLLECTION_JSON` when needed.
+
+`make smoke-notification` runs the evaluation smoke, verifies the Notification inbox, notification, and delivery rows, and verifies the student's notification APIs through the gateway.
 
 ## Credentials
 

@@ -95,6 +95,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-ags}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
       JWT_EXPIRES_MINUTES: ${JWT_EXPIRES_MINUTES:-1440}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
@@ -328,6 +329,50 @@ services:
       - ags-network
     restart: unless-stopped
 
+  notification-service:
+    profiles:
+      - app
+    image: ${NOTIFICATION_IMAGE:-dorrissdang/evalcore-notification-service:main}
+    container_name: ${NOTIFICATION_CONTAINER_NAME:-ags-notification-service}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      AUTO_APPLY_MIGRATIONS: ${AUTO_APPLY_MIGRATIONS:-true}
+      DATABASE_URL: ${NOTIFICATION_DATABASE_URL:-Host=postgres;Port=5432;Database=ags;Username=ags;Password=ags_password}
+      JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
+      JWT_ISSUER: ${JWT_ISSUER:-ags}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
+      IDENTITY_SERVICE_BASE_URL: http://identity-service:8080
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-ags}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-ags_password}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-ags.domain.events}
+      NOTIFICATION_EVALUATION_COMPLETED_ROUTING_KEY: ${NOTIFICATION_EVALUATION_COMPLETED_ROUTING_KEY:-evaluation.completed.v1}
+      NOTIFICATION_EMAIL_ENABLED: ${NOTIFICATION_EMAIL_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-EvalCore}
+      SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      NOTIFICATION_EMAIL_SUBJECT_PREFIX: ${NOTIFICATION_EMAIL_SUBJECT_PREFIX:-[EvalCore]}
+    ports:
+      - "${NOTIFICATION_PUBLIC_PORT:-8086}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+    networks:
+      - ags-network
+    restart: unless-stopped
+
   gateway:
     profiles:
       - app
@@ -338,6 +383,7 @@ services:
       CLASS_UPSTREAM: ${CLASS_UPSTREAM:-class-service:8080}
       SUBMISSION_UPSTREAM: ${SUBMISSION_UPSTREAM:-submission-service:8080}
       EVALUATION_UPSTREAM: ${EVALUATION_UPSTREAM:-evaluation-service:8080}
+      NOTIFICATION_UPSTREAM: ${NOTIFICATION_UPSTREAM:-notification-service:8080}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     volumes:
@@ -351,6 +397,8 @@ services:
         condition: service_started
       evaluation-service:
         condition: service_healthy
+      notification-service:
+        condition: service_started
     networks:
       - ags-network
     restart: unless-stopped
