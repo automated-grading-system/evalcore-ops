@@ -181,6 +181,7 @@ Allowed frontend origins:
 
 - `http://localhost:3000`
 - `http://localhost:5173`
+- `https://prn232.dorriss.com`
 
 Browser `PUT` to presigned URLs should work for:
 
@@ -188,6 +189,24 @@ Browser `PUT` to presigned URLs should work for:
 - `submission-assets`
 
 The same MinIO API CORS setting covers `evaluation-reports`, which is reserved for future report downloads.
+
+## Vercel and production CORS
+
+The Vercel frontend at `https://prn232.dorriss.com` is included in the default
+`CORS_ALLOWED_ORIGINS` and `MINIO_API_CORS_ALLOW_ORIGIN` values. Caddy handles
+Gateway `/api/*` preflight requests and adds API response CORS headers for the
+approved origins. The Gateway policy allows `Authorization` and `Content-Type`
+headers and `GET`, `POST`, `PATCH`, `PUT`, `DELETE`, and `OPTIONS` methods.
+
+For browser presigned uploads, MinIO must be published at a public HTTPS URL.
+Set `S3_PUBLIC_ENDPOINT` in the deployment `.env` to that browser-reachable
+URL (not `localhost` or `http://minio:9000`) and set `S3_USE_SSL=true`. MinIO
+CORS must allow `https://prn232.dorriss.com`; presigned upload/download flows
+need `GET`, `PUT`, `POST`, and `HEAD` available to the browser.
+
+The frontend Vercel environment must set `NEXT_PUBLIC_API_URL` to the public
+Cloudflare Tunnel URL for this Gateway, for example
+`https://api-prn232.dorriss.com`.
 
 ## Dozzle Logs
 

@@ -1,5 +1,85 @@
 :8080 {
 	route {
+		# The Gateway is the browser API boundary. Keep this explicit allow-list in
+		# sync with CORS_ALLOWED_ORIGINS so upstream services do not need to handle
+		# browser OPTIONS requests themselves.
+		@api_origin_next {
+			path /api/*
+			header Origin http://localhost:3000
+		}
+		header @api_origin_next {
+			Access-Control-Allow-Origin "{http.request.header.Origin}"
+			Access-Control-Allow-Credentials true
+			Vary Origin
+		}
+		@api_origin_vite {
+			path /api/*
+			header Origin http://localhost:5173
+		}
+		header @api_origin_vite {
+			Access-Control-Allow-Origin "{http.request.header.Origin}"
+			Access-Control-Allow-Credentials true
+			Vary Origin
+		}
+		@api_origin_production {
+			path /api/*
+			header Origin https://prn232.dorriss.com
+		}
+		header @api_origin_production {
+			Access-Control-Allow-Origin "{http.request.header.Origin}"
+			Access-Control-Allow-Credentials true
+			Vary Origin
+		}
+
+		@api_preflight_next {
+			method OPTIONS
+			path /api/*
+			header Origin http://localhost:3000
+		}
+		handle @api_preflight_next {
+			header {
+				Access-Control-Allow-Origin "{http.request.header.Origin}"
+				Access-Control-Allow-Credentials true
+				Access-Control-Allow-Headers "Authorization, Content-Type"
+				Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+				Access-Control-Max-Age 86400
+				Vary "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+			}
+			respond "" 204
+		}
+		@api_preflight_vite {
+			method OPTIONS
+			path /api/*
+			header Origin http://localhost:5173
+		}
+		handle @api_preflight_vite {
+			header {
+				Access-Control-Allow-Origin "{http.request.header.Origin}"
+				Access-Control-Allow-Credentials true
+				Access-Control-Allow-Headers "Authorization, Content-Type"
+				Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+				Access-Control-Max-Age 86400
+				Vary "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+			}
+			respond "" 204
+		}
+		@api_preflight_production {
+			method OPTIONS
+			path /api/*
+			header Origin https://prn232.dorriss.com
+		}
+		handle @api_preflight_production {
+			header {
+				Access-Control-Allow-Origin "{http.request.header.Origin}"
+				Access-Control-Allow-Credentials true
+				Access-Control-Allow-Headers "Authorization, Content-Type"
+				Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+				Access-Control-Max-Age 86400
+				Vary "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+			}
+			respond "" 204
+		}
+
 		# Gateway health is served directly by Caddy.
 		handle /health {
 			header Content-Type application/json

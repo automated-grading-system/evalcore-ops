@@ -44,7 +44,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ags}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ags_password}
-      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-http://localhost:3000,http://localhost:5173}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com}
     command: server /data --console-address ":9001"
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
@@ -96,7 +96,7 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
       JWT_EXPIRES_MINUTES: ${JWT_EXPIRES_MINUTES:-1440}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com]}
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-ags_password}
@@ -124,7 +124,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-ags}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com]}
       S3_INTERNAL_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
@@ -167,7 +167,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
       JWT_ISSUER: ${JWT_ISSUER:-ags}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com]}
       CLASS_SERVICE_BASE_URL: http://class-service:8080
       S3_INTERNAL_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
@@ -214,7 +214,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
       JWT_ISSUER: ${JWT_ISSUER:-ags}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com]}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
       CLASS_SERVICE_BASE_URL: http://class-service:8080
       SUBMISSION_SERVICE_BASE_URL: http://submission-service:8080
@@ -273,7 +273,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-local-dev-only-but-long-enough-123456}
       JWT_ISSUER: ${JWT_ISSUER:-ags}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173]}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com]}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
       CLASS_SERVICE_BASE_URL: http://class-service:8080
       SUBMISSION_SERVICE_BASE_URL: http://submission-service:8080
@@ -343,6 +343,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-ags}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ags-api}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-[http://localhost:3000,http://localhost:5173,https://prn232.dorriss.com]}
       IDENTITY_SERVICE_BASE_URL: http://identity-service:8080
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
