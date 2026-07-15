@@ -10,7 +10,8 @@ APP_COMPOSE := docker compose --env-file $(ROOT_ENV_FILE)
 
 .PHONY: env infra-up infra-down infra-reset infra-logs infra-ps smoke-infra
 .PHONY: gateway-up gateway-down gateway-restart gateway-logs gateway-ps smoke-auth auth-stack-up auth-stack-down
-.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-rubric smoke-notification demo-100-submissions
+.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-rubric smoke-notification
+.PHONY: demo-build-variants demo-100-submissions demo-10-submissions-mixed demo-100-submissions-mixed
 .PHONY: services-pull services-up services-down web-up stack-up stack-down
 
 env:
@@ -99,6 +100,22 @@ smoke-notification: env
 
 demo-100-submissions: env
 	./scripts/demo-100-submissions.sh
+
+demo-build-variants:
+	./scripts/build-demo-submission-variants.sh
+
+demo-10-submissions-mixed: env demo-build-variants
+	DEMO_SUBMISSION_COUNT=10 \
+	DEMO_SUBMIT_CONCURRENCY=5 \
+	DEMO_VARIANT_MODE=mixed \
+	DEMO_WAIT_FOR_COMPLETION=true \
+	$(MAKE) demo-100-submissions
+
+demo-100-submissions-mixed: env demo-build-variants
+	DEMO_SUBMISSION_COUNT=100 \
+	DEMO_SUBMIT_CONCURRENCY=20 \
+	DEMO_VARIANT_MODE=mixed \
+	$(MAKE) demo-100-submissions
 
 auth-stack-up:
 	$(MAKE) infra-up

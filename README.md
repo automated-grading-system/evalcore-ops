@@ -281,13 +281,52 @@ bun run dev
 ```
 
 The script creates a fresh class and active lab, configures the 12-criterion
-10-point rubric from `fixtures/prn232-weighted-rubric.json`, registers 100 unique student
-accounts through Identity, joins them to the class, uploads the real evaluation
-fixture once per submission, and then completes the submissions in a bounded
-burst. It never seeds the database and never calls a manual evaluation endpoint.
-It waits only until all accepted events appear in the Evaluation database; the
-Docker evaluations continue in the background while the lecturer watches
-`http://localhost:3000/lecturer/live-grading`.
+10-point rubric from `fixtures/prn232-weighted-rubric.json`, registers 100 unique
+student accounts through Identity, joins them to the class, uploads exactly one
+real ZIP per student through the submission's presigned URL, and then completes
+the submissions in a bounded burst. It verifies unique emails, student IDs, and
+submission IDs. It never seeds the database and never calls a manual evaluation
+endpoint. It waits only until all accepted events appear in the Evaluation
+database by default; the Docker evaluations continue in the background while
+the lecturer watches `http://localhost:3000/lecturer/live-grading`.
+
+The default `DEMO_VARIANT_MODE=uniform` preserves the pacing/stress demo: every
+student submits the known-good ZIP and should receive `passed` with `10.0/10.0`.
+
+Build the deterministic submission variants and run the self-verifying small
+mixed demo with:
+
+```bash
+make demo-build-variants
+make demo-10-submissions-mixed
+```
+
+The generator derives every ZIP from the known-good submission fixture and
+writes them to `../test/dist/evaluation/variants`. That workspace fixture path
+is not tracked by the Ops repository, so generated ZIPs stay local and can be
+recreated at any time from the committed generator.
+
+Mixed mode uses the weighted collection under
+`../test/dist/evaluation/PRN232-LMS-LAB2-weighted.postman_collection.json` and
+the real ZIPs under `../test/dist/evaluation/variants`. Every represented
+variant is interleaved deterministically across unique students. For counts of
+at least eight, every variant appears at least once; the 10-student target uses
+three passing ZIPs and one of each of the other seven variants. Once all ten
+evaluations finish, the script joins monitor results back to each stored
+submission ID and verifies scoring mode, the 10-point maximum, expected status,
+reduced scores for assertion failures, and zero-score coded infrastructure
+errors.
+
+For the full review intake, run:
+
+```bash
+make demo-100-submissions-mixed
+```
+
+The exact 100-student distribution is 60 pass, 8 Swagger failures, 10
+pagination failures, 8 response-format failures, 6 multiple-criteria failures,
+4 readiness errors, 2 build errors, and 2 invalid-Compose errors. The full target
+does not wait for every sandbox unless `DEMO_WAIT_FOR_COMPLETION=true` is set.
 
 After intake, the script verifies that scoped `running` and global `activeSlots`
 do not exceed the API's numeric `runnerConcurrency`, rechecks service health,
@@ -301,7 +340,9 @@ DEMO_SUBMISSION_COUNT=10 DEMO_SUBMIT_CONCURRENCY=5 make demo-100-submissions
 ```
 
 To keep polling until every evaluation reaches a terminal state, opt in
-explicitly. Failures and errors are printed and cause a non-zero exit:
+explicitly. Uniform mode requires every result to pass. Mixed mode instead
+requires its exact expected passed/failed/error distribution; genuine grading
+failures and infrastructure errors are successful evidence for that demo:
 
 ```bash
 DEMO_WAIT_FOR_COMPLETION=true make demo-100-submissions
@@ -316,12 +357,21 @@ Quality use documented runtime/OpenAPI proxies; Newman alone cannot fully prove
 source organization or maintainability. A future static-analysis plugin should
 replace those proxies where full rigor is required.
 
-Useful optional settings are `DEMO_MONITOR_TIMEOUT_SECONDS` (default `300`),
+The rubric total is 10.0 and each criterion has its own `maxScore`. Normal
+Newman assertion failures reduce the weighted score and remain `failed` business
+results. Invalid packages, build failures, and readiness failures remain
+zero-score `error` results; the script does not disguise them as rubric misses.
+
+Useful optional settings are `DEMO_VARIANT_MODE` (`uniform` by default),
+`DEMO_VARIANTS_DIR`, `DEMO_MONITOR_TIMEOUT_SECONDS` (default `300`),
 `DEMO_WAIT_TIMEOUT_SECONDS` (default `14400`), `DEMO_MONITOR_POLL_SECONDS`
-(default `2`), `DEMO_FRONTEND_URL`, `EVAL_FIXTURE_ZIP`, and
+(default `2`), `DEMO_EXPECTED_RUNNER_CONCURRENCY` (default `2`),
+`DEMO_FRONTEND_URL`, `EVAL_FIXTURE_ZIP`, and
 `EVAL_COLLECTION_JSON`. Override `DEMO_RUBRIC_JSON` only together with a
 collection whose real assertion names match every required criterion. API calls
-and uploads also have bounded connection and
+Mixed mode's exact score/error self-verification is calibrated to the supplied
+rubric, collection, and generated variants. API calls and uploads also have
+bounded connection and
 request timeouts so a stalled service cannot leave a parallel worker hanging;
 override `DEMO_CURL_CONNECT_TIMEOUT_SECONDS`,
 `DEMO_CURL_HEALTH_TIMEOUT_SECONDS`, `DEMO_CURL_API_TIMEOUT_SECONDS`, or

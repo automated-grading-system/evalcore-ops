@@ -7,6 +7,24 @@ ROOT_ENV_FILE="${ROOT_DIR}/.env"
 log() { printf '[demo-100] %s\n' "$1"; }
 fail() { log "FAILURE: $1" >&2; exit 1; }
 
+VARIANT_NAMES=(
+  pass
+  fail-swagger
+  fail-pagination
+  fail-response-format
+  fail-multiple-criteria
+  readiness-error
+  build-error
+  invalid-compose
+)
+VARIANT_PERCENTAGES=(60 8 10 8 6 4 2 2)
+declare -a VARIANT_COUNTS=()
+declare -a DEMO_ASSIGNMENT_VARIANTS=()
+declare -a DEMO_ASSIGNMENT_ZIPS=()
+EXPECTED_PASSED=0
+EXPECTED_FAILED=0
+EXPECTED_ERROR=0
+
 load_env_file() {
   local env_file="$1" line name
 
@@ -133,6 +151,167 @@ check_required_services() {
   retry_health "${GATEWAY_URL}/notification/health" "Notification Service"
 }
 
+validate_submission_zip() {
+  local zip_file="$1" require_root_compose="$2" entry compose_entry="" root_compose_count=0
+  local -a zip_entries
+
+  [[ -f "${zip_file}" ]] || fail "Submission variant not found: ${zip_file}"
+  unzip -tqq "${zip_file}" >/dev/null || fail "Submission variant is not a valid ZIP: ${zip_file}"
+  mapfile -t zip_entries < <(unzip -Z1 "${zip_file}")
+  (( ${#zip_entries[@]} > 0 )) || fail "Submission variant is empty: ${zip_file}"
+
+  for entry in "${zip_entries[@]}"; do
+    case "${entry}" in
+      /* | .. | ../* | */../* | */.. | *\\*)
+        fail "Submission variant contains an unsafe path '${entry}': ${zip_file}"
+        ;;
+    esac
+    if [[ "${entry}" == docker-compose.yml || "${entry}" == compose.yaml ]]; then
+      root_compose_count=$((root_compose_count + 1))
+      compose_entry="${entry}"
+    fi
+    if [[ "${require_root_compose}" == true \
+      && ( "${entry}" == */docker-compose.yml || "${entry}" == */compose.yaml ) ]]; then
+      fail "Submission variant compose file must be at ZIP root, not ${entry}."
+    fi
+  done
+
+  if [[ "${require_root_compose}" == true && "${root_compose_count}" -ne 1 ]]; then
+    fail "Submission variant must contain exactly one root docker-compose.yml or compose.yaml: ${zip_file}"
+  fi
+
+  if [[ "${root_compose_count}" -eq 1 ]] && unzip -p "${zip_file}" "${compose_entry}" \
+    | grep -Eqi 'privileged[[:space:]]*:|network_mode[[:space:]]*:[[:space:]]*host|/var/run/docker\.sock|pid[[:space:]]*:[[:space:]]*host|ipc[[:space:]]*:[[:space:]]*host|cap_add[[:space:]]*:|devices[[:space:]]*:|type[[:space:]]*:[[:space:]]*bind|-[[:space:]]*(/|\.\.?/)'; then
+    fail "Submission variant compose file contains a forbidden host or privilege capability: ${zip_file}"
+  fi
+}
+
+build_demo_assignment_plan() {
+  local index raw allocated=0 remaining best best_remainder normal_failures error_results
+  local student best_deficit deficit
+  local -a remainders=() assigned=()
+
+  for index in "${!VARIANT_NAMES[@]}"; do
+    VARIANT_COUNTS[index]=0
+    assigned[index]=0
+  done
+
+  if [[ "${DEMO_VARIANT_MODE}" == uniform ]]; then
+    VARIANT_COUNTS[0]="${DEMO_SUBMISSION_COUNT}"
+    for student in $(seq 1 "${DEMO_SUBMISSION_COUNT}"); do
+      DEMO_ASSIGNMENT_VARIANTS[student]=pass
+      DEMO_ASSIGNMENT_ZIPS[student]="${EVAL_FIXTURE_ZIP}"
+    done
+  else
+    for index in "${!VARIANT_NAMES[@]}"; do
+      raw=$((DEMO_SUBMISSION_COUNT * VARIANT_PERCENTAGES[index]))
+      VARIANT_COUNTS[index]=$((raw / 100))
+      remainders[index]=$((raw % 100))
+      allocated=$((allocated + VARIANT_COUNTS[index]))
+    done
+
+    remaining=$((DEMO_SUBMISSION_COUNT - allocated))
+    while (( remaining > 0 )); do
+      best=-1
+      best_remainder=-1
+      for index in "${!VARIANT_NAMES[@]}"; do
+        if (( remainders[index] > best_remainder )); then
+          best="${index}"
+          best_remainder="${remainders[index]}"
+        fi
+      done
+      (( best >= 0 )) || fail "Could not apportion the mixed variant distribution."
+      VARIANT_COUNTS[best]=$((VARIANT_COUNTS[best] + 1))
+      remainders[best]=-1
+      remaining=$((remaining - 1))
+    done
+
+    if (( DEMO_SUBMISSION_COUNT >= ${#VARIANT_NAMES[@]} )); then
+      for index in "${!VARIANT_NAMES[@]}"; do
+        (( VARIANT_COUNTS[index] == 0 )) || continue
+        best=-1
+        best_remainder=1
+        for allocated in "${!VARIANT_NAMES[@]}"; do
+          if (( VARIANT_COUNTS[allocated] > best_remainder )); then
+            best="${allocated}"
+            best_remainder="${VARIANT_COUNTS[allocated]}"
+          fi
+        done
+        (( best >= 0 )) \
+          || fail "Could not include every variant in a ${DEMO_SUBMISSION_COUNT}-submission mixed demo."
+        VARIANT_COUNTS[best]=$((VARIANT_COUNTS[best] - 1))
+        VARIANT_COUNTS[index]=1
+      done
+    fi
+
+    normal_failures=$((
+      VARIANT_COUNTS[1] + VARIANT_COUNTS[2] + VARIANT_COUNTS[3] + VARIANT_COUNTS[4]
+    ))
+    if (( DEMO_SUBMISSION_COUNT >= 2 && normal_failures == 0 )); then
+      (( VARIANT_COUNTS[0] > 1 )) \
+        || fail "Could not reserve a normal assertion failure in the mixed distribution."
+      VARIANT_COUNTS[0]=$((VARIANT_COUNTS[0] - 1))
+      VARIANT_COUNTS[2]=$((VARIANT_COUNTS[2] + 1))
+    fi
+
+    error_results=$((VARIANT_COUNTS[5] + VARIANT_COUNTS[6] + VARIANT_COUNTS[7]))
+    if (( DEMO_SUBMISSION_COUNT >= 3 && error_results == 0 )); then
+      if (( VARIANT_COUNTS[0] > 1 )); then
+        VARIANT_COUNTS[0]=$((VARIANT_COUNTS[0] - 1))
+      elif (( VARIANT_COUNTS[2] > 1 )); then
+        VARIANT_COUNTS[2]=$((VARIANT_COUNTS[2] - 1))
+      else
+        fail "Could not reserve an infrastructure error in the mixed distribution."
+      fi
+      VARIANT_COUNTS[5]=$((VARIANT_COUNTS[5] + 1))
+    fi
+
+    allocated=0
+    for index in "${!VARIANT_NAMES[@]}"; do
+      allocated=$((allocated + VARIANT_COUNTS[index]))
+    done
+    (( allocated == DEMO_SUBMISSION_COUNT )) \
+      || fail "Mixed variant distribution totals ${allocated}, expected ${DEMO_SUBMISSION_COUNT}."
+
+    # Largest cumulative deficit keeps the deterministic exact allocation
+    # interleaved instead of front-loading all failures and errors.
+    for student in $(seq 1 "${DEMO_SUBMISSION_COUNT}"); do
+      best=-1
+      best_deficit=-9223372036854775807
+      for index in "${!VARIANT_NAMES[@]}"; do
+        (( assigned[index] < VARIANT_COUNTS[index] )) || continue
+        deficit=$((student * VARIANT_COUNTS[index] - assigned[index] * DEMO_SUBMISSION_COUNT))
+        if (( deficit > best_deficit )); then
+          best="${index}"
+          best_deficit="${deficit}"
+        fi
+      done
+      (( best >= 0 )) || fail "Could not assign submission variant ${student}."
+      DEMO_ASSIGNMENT_VARIANTS[student]="${VARIANT_NAMES[best]}"
+      DEMO_ASSIGNMENT_ZIPS[student]="${DEMO_VARIANTS_DIR}/${VARIANT_NAMES[best]}.zip"
+      assigned[best]=$((assigned[best] + 1))
+    done
+  fi
+
+  EXPECTED_PASSED="${VARIANT_COUNTS[0]}"
+  EXPECTED_FAILED=$((
+    VARIANT_COUNTS[1] + VARIANT_COUNTS[2] + VARIANT_COUNTS[3] + VARIANT_COUNTS[4]
+  ))
+  EXPECTED_ERROR=$((VARIANT_COUNTS[5] + VARIANT_COUNTS[6] + VARIANT_COUNTS[7]))
+}
+
+print_demo_assignment_plan() {
+  local index
+
+  log "Variant mode: ${DEMO_VARIANT_MODE}"
+  log "${DEMO_SUBMISSION_COUNT} students will each submit one ZIP."
+  log "Distribution:"
+  for index in "${!VARIANT_NAMES[@]}"; do
+    log "${VARIANT_NAMES[index]}: ${VARIANT_COUNTS[index]}"
+  done
+  log "Expected terminal results: passed=${EXPECTED_PASSED}, failed=${EXPECTED_FAILED}, error=${EXPECTED_ERROR}."
+}
+
 run_bounded() {
   local worker="$1" count="$2" concurrency="$3"
   local index active=0 failures=0
@@ -161,11 +340,14 @@ run_bounded() {
 
 prepare_student() {
   local index="$1" padded student_dir email full_name token student_id submission_id upload_url
+  local variant_name submission_zip
   local request_file response_file
 
   printf -v padded '%03d' "${index}"
   student_dir="${STUDENTS_DIR}/${padded}"
   mkdir -p "${student_dir}"
+  variant_name="${DEMO_ASSIGNMENT_VARIANTS[index]}"
+  submission_zip="${DEMO_ASSIGNMENT_ZIPS[index]}"
   email="evalcore-demo-${RUN_ID}-${padded}@ags.local"
   full_name="EvalCore Burst Student ${padded}"
   request_file="${student_dir}/request.json"
@@ -194,12 +376,13 @@ prepare_student() {
   printf '%s' "${token}" > "${student_dir}/token"
   printf '%s' "${student_id}" > "${student_dir}/student-id"
   printf '%s' "${email}" > "${student_dir}/email"
+  printf '%s' "${variant_name}" > "${student_dir}/variant"
 
   request POST "/api/classes/${CLASS_ID}/join" "${token}" "" "${response_file}"
   require_request_ok "Join class for student ${padded}" "${response_file}" || return 1
 
-  jq -n --arg filename "$(basename "${EVAL_FIXTURE_ZIP}")" \
-    --arg notes "EvalCore 100-submission burst demo (${RUN_ID})" \
+  jq -n --arg filename "$(basename "${submission_zip}")" \
+    --arg notes "EvalCore weighted demo ${RUN_ID}; variant=${variant_name}" \
     '{projectFileName:$filename,notes:$notes}' > "${request_file}"
   request POST "/api/labs/${LAB_ID}/submissions" "${token}" "${request_file}" "${response_file}"
   require_request_ok "Create submission for student ${padded}" "${response_file}" || return 1
@@ -212,7 +395,7 @@ prepare_student() {
     return 1
   fi
 
-  put_file "${EVAL_FIXTURE_ZIP}" "${upload_url}" "${student_dir}/upload-response.txt"
+  put_file "${submission_zip}" "${upload_url}" "${student_dir}/upload-response.txt"
   if ! is_2xx; then
     log "Upload submission for student ${padded} failed with HTTP ${HTTP_STATUS:-000}." >&2
     return 1
@@ -220,7 +403,30 @@ prepare_student() {
 
   printf '%s' "${submission_id}" > "${student_dir}/submission-id"
   : > "${student_dir}/prepared"
-  log "Prepared ${index}/${DEMO_SUBMISSION_COUNT}: student ${student_id}, submission ${submission_id}"
+  log "Prepared ${index}/${DEMO_SUBMISSION_COUNT}: student ${student_id}, submission ${submission_id}, variant ${variant_name}"
+}
+
+assert_unique_prepared_records() {
+  local field index padded value total unique values_file
+
+  for field in email student-id submission-id; do
+    values_file="${TMP_DIR}/${field}-values.txt"
+    : > "${values_file}"
+    for index in $(seq 1 "${DEMO_SUBMISSION_COUNT}"); do
+      printf -v padded '%03d' "${index}"
+      [[ -s "${STUDENTS_DIR}/${padded}/${field}" ]] \
+        || fail "Student ${padded} is missing ${field} proof."
+      value="$(<"${STUDENTS_DIR}/${padded}/${field}")"
+      printf '%s\n' "${value}" >> "${values_file}"
+    done
+    total="$(awk 'END { print NR + 0 }' "${values_file}")"
+    unique="$(sort -u "${values_file}" | awk 'END { print NR + 0 }')"
+    if (( total != DEMO_SUBMISSION_COUNT || unique != DEMO_SUBMISSION_COUNT )); then
+      fail "Expected ${DEMO_SUBMISSION_COUNT} unique ${field} values, found ${unique}/${total}."
+    fi
+  done
+
+  log "Verified ${DEMO_SUBMISSION_COUNT} unique emails, student IDs, and submission IDs."
 }
 
 complete_submission() {
@@ -259,6 +465,123 @@ fetch_overview() {
   require_request_ok "Read evaluation monitor overview" "${OVERVIEW_RESPONSE}"
 }
 
+fetch_recent_evaluations() {
+  request GET "/api/evaluations/monitor/recent?labId=${LAB_ID}&limit=${DEMO_SUBMISSION_COUNT}" \
+    "${LECTURER_TOKEN}" "" "${RECENT_RESPONSE}"
+  require_request_ok "Read recent weighted evaluations" "${RECENT_RESPONSE}"
+}
+
+expected_status_for_variant() {
+  case "$1" in
+    pass) printf 'passed\n' ;;
+    fail-swagger | fail-pagination | fail-response-format | fail-multiple-criteria) printf 'failed\n' ;;
+    readiness-error | build-error | invalid-compose) printf 'error\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+expected_score_for_variant() {
+  case "$1" in
+    pass) printf '10.0\n' ;;
+    fail-swagger) printf '9.5\n' ;;
+    fail-pagination) printf '9.6\n' ;;
+    fail-response-format) printf '9.2\n' ;;
+    fail-multiple-criteria) printf '6.8\n' ;;
+    readiness-error | build-error | invalid-compose) printf '0.0\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+expected_error_code_for_variant() {
+  case "$1" in
+    fail-swagger | fail-pagination | fail-response-format | fail-multiple-criteria) printf 'NEWMAN_RUN_FAILED\n' ;;
+    readiness-error) printf 'APP_READINESS_FAILED\n' ;;
+    build-error) printf 'COMPOSE_BUILD_FAILED\n' ;;
+    invalid-compose) printf 'COMPOSE_VALIDATION_FAILED\n' ;;
+    pass) printf '\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+assert_terminal_weighted_results() {
+  local index padded submission_id variant expected_status expected_score expected_error_code
+  local match_count row actual_status score max_score error_code
+  local -A printed_variants=()
+
+  if (( DEMO_SUBMISSION_COUNT > 100 )); then
+    log "Skipping per-evaluation result proof because the monitor recent endpoint is capped at 100 rows."
+    return 0
+  fi
+
+  fetch_recent_evaluations || return 1
+  jq -e --argjson expected "${DEMO_SUBMISSION_COUNT}" '
+    (.data // .) as $items
+    | ($items | type) == "array" and
+      ($items | length) == $expected and
+      all($items[];
+        .scoringMode == "weighted_rubric" and
+        ((.maxScore | tonumber) == 10))
+  ' "${RECENT_RESPONSE}" >/dev/null \
+    || { log "Recent results do not contain exactly ${DEMO_SUBMISSION_COUNT} weighted 10-point evaluations." >&2; return 1; }
+
+  for index in $(seq 1 "${DEMO_SUBMISSION_COUNT}"); do
+    printf -v padded '%03d' "${index}"
+    submission_id="$(<"${STUDENTS_DIR}/${padded}/submission-id")"
+    variant="$(<"${STUDENTS_DIR}/${padded}/variant")"
+    expected_status="$(expected_status_for_variant "${variant}")" \
+      || { log "Unknown recorded variant '${variant}' for student ${padded}." >&2; return 1; }
+    expected_score="$(expected_score_for_variant "${variant}")" \
+      || { log "No expected score is defined for variant '${variant}'." >&2; return 1; }
+    expected_error_code="$(expected_error_code_for_variant "${variant}")" \
+      || { log "No expected error code is defined for variant '${variant}'." >&2; return 1; }
+    match_count="$(jq -er --arg submissionId "${submission_id}" '
+      [(.data // .)[] | select(.submissionId == $submissionId)] | length
+    ' "${RECENT_RESPONSE}")" \
+      || { log "Could not inspect recent results for submission ${submission_id}." >&2; return 1; }
+    [[ "${match_count}" == 1 ]] \
+      || { log "Expected one recent result for submission ${submission_id}, found ${match_count}." >&2; return 1; }
+    row="$(jq -cer --arg submissionId "${submission_id}" '
+      [(.data // .)[] | select(.submissionId == $submissionId)][0]
+    ' "${RECENT_RESPONSE}")"
+    actual_status="$(jq -r '.status' <<< "${row}")"
+    if [[ "${actual_status}" != "${expected_status}" ]]; then
+      log "Variant ${variant} produced '${actual_status}', expected '${expected_status}' (submission ${submission_id})." >&2
+      return 1
+    fi
+
+    case "${expected_status}" in
+      passed)
+        jq -e --arg expectedScore "${expected_score}" \
+          '(.score | tonumber) == ($expectedScore | tonumber) and .errorCode == null' \
+          <<< "${row}" >/dev/null \
+          || { log "Variant ${variant} did not produce expected score ${expected_score} without an error code." >&2; return 1; }
+        ;;
+      failed)
+        jq -e --arg expectedScore "${expected_score}" --arg expectedErrorCode "${expected_error_code}" \
+          '(.score | tonumber) == ($expectedScore | tonumber) and .errorCode == $expectedErrorCode' \
+          <<< "${row}" >/dev/null \
+          || { log "Variant ${variant} did not produce score ${expected_score} and error ${expected_error_code}." >&2; return 1; }
+        ;;
+      error)
+        jq -e --arg expectedScore "${expected_score}" --arg expectedErrorCode "${expected_error_code}" \
+          '(.score | tonumber) == ($expectedScore | tonumber) and .errorCode == $expectedErrorCode' \
+          <<< "${row}" >/dev/null \
+          || { log "Infrastructure variant ${variant} did not produce score ${expected_score} and error ${expected_error_code}." >&2; return 1; }
+        ;;
+    esac
+
+    if [[ "${printed_variants[${variant}]:-}" != true ]]; then
+      score="$(jq -r '.score // "n/a"' <<< "${row}")"
+      max_score="$(jq -r '.maxScore // "n/a"' <<< "${row}")"
+      error_code="$(jq -r '.errorCode // "none"' <<< "${row}")"
+      log "Sample ${variant}: status=${actual_status}, score=${score}/${max_score}, errorCode=${error_code}."
+      printed_variants["${variant}"]=true
+    fi
+  done
+
+  log "Verified every terminal result against its assigned real ZIP variant."
+}
+
 read_overview() {
   jq -er '
     (.data // .) as $o
@@ -290,7 +613,11 @@ wait_for_monitor_intake() {
       log "Evaluation intake: total=${total}/${DEMO_SUBMISSION_COUNT}, queued=${queued}, running=${running}, terminal=${terminal}, activeSlots=${active_slots}, runnerConcurrency=${runner_concurrency}"
       last_total="${total}"
     fi
-    if (( total >= DEMO_SUBMISSION_COUNT )); then
+    if (( total > DEMO_SUBMISSION_COUNT )); then
+      log "Monitor observed ${total} evaluations for ${DEMO_SUBMISSION_COUNT} one-time submissions." >&2
+      return 1
+    fi
+    if (( total == DEMO_SUBMISSION_COUNT )); then
       return 0
     fi
     sleep "${DEMO_MONITOR_POLL_SECONDS}"
@@ -309,6 +636,10 @@ assert_monitor_pacing() {
 
   if [[ ! "${runner_concurrency}" =~ ^[0-9]+$ ]] || (( runner_concurrency < 1 )); then
     log "Monitor did not report a positive numeric runnerConcurrency ('${runner_concurrency}'); pacing cannot be verified." >&2
+    return 1
+  fi
+  if (( runner_concurrency != DEMO_EXPECTED_RUNNER_CONCURRENCY )); then
+    log "Monitor runnerConcurrency is ${runner_concurrency}, expected ${DEMO_EXPECTED_RUNNER_CONCURRENCY}." >&2
     return 1
   fi
   if (( running > runner_concurrency )); then
@@ -398,10 +729,15 @@ wait_for_terminal_evaluations() {
       previous="${fields}"
     fi
 
-    if (( total >= DEMO_SUBMISSION_COUNT && terminal >= DEMO_SUBMISSION_COUNT )); then
+    if (( total > DEMO_SUBMISSION_COUNT || terminal > DEMO_SUBMISSION_COUNT )); then
+      log "Monitor observed duplicate evaluation rows (total=${total}, terminal=${terminal}, expected=${DEMO_SUBMISSION_COUNT})." >&2
+      return 1
+    fi
+
+    if (( total == DEMO_SUBMISSION_COUNT && terminal == DEMO_SUBMISSION_COUNT )); then
       log "Terminal results: passed=${passed}, failed=${failed}, error=${error}."
-      if (( failed > 0 || error > 0 )); then
-        log "One or more real evaluations failed or errored; inspect the live monitor for details." >&2
+      if (( passed != EXPECTED_PASSED || failed != EXPECTED_FAILED || error != EXPECTED_ERROR )); then
+        log "Terminal distribution differs from expected passed=${EXPECTED_PASSED}, failed=${EXPECTED_FAILED}, error=${EXPECTED_ERROR}." >&2
         return 1
       fi
       return 0
@@ -416,17 +752,19 @@ wait_for_terminal_evaluations() {
 load_env_file "${ROOT_ENV_FILE}"
 DEMO_SUBMISSION_COUNT="${DEMO_SUBMISSION_COUNT:-100}"
 DEMO_SUBMIT_CONCURRENCY="${DEMO_SUBMIT_CONCURRENCY:-20}"
+DEMO_VARIANT_MODE="${DEMO_VARIANT_MODE:-uniform}"
+DEMO_VARIANTS_DIR="${DEMO_VARIANTS_DIR:-${ROOT_DIR}/../test/dist/evaluation/variants}"
 DEMO_WAIT_FOR_COMPLETION="${DEMO_WAIT_FOR_COMPLETION:-false}"
 DEMO_MONITOR_TIMEOUT_SECONDS="${DEMO_MONITOR_TIMEOUT_SECONDS:-300}"
 DEMO_WAIT_TIMEOUT_SECONDS="${DEMO_WAIT_TIMEOUT_SECONDS:-14400}"
 DEMO_MONITOR_POLL_SECONDS="${DEMO_MONITOR_POLL_SECONDS:-2}"
+DEMO_EXPECTED_RUNNER_CONCURRENCY="${DEMO_EXPECTED_RUNNER_CONCURRENCY:-2}"
 DEMO_ALLOW_REMOTE="${DEMO_ALLOW_REMOTE:-false}"
 DEMO_CURL_CONNECT_TIMEOUT_SECONDS="${DEMO_CURL_CONNECT_TIMEOUT_SECONDS:-5}"
 DEMO_CURL_API_TIMEOUT_SECONDS="${DEMO_CURL_API_TIMEOUT_SECONDS:-30}"
 DEMO_CURL_UPLOAD_TIMEOUT_SECONDS="${DEMO_CURL_UPLOAD_TIMEOUT_SECONDS:-120}"
 DEMO_CURL_HEALTH_TIMEOUT_SECONDS="${DEMO_CURL_HEALTH_TIMEOUT_SECONDS:-10}"
 EVAL_FIXTURE_ZIP="${EVAL_FIXTURE_ZIP:-${ROOT_DIR}/../test/dist/evaluation/PRN232.LMS-Evaluation-Submission.zip}"
-EVAL_COLLECTION_JSON="${EVAL_COLLECTION_JSON:-${ROOT_DIR}/fixtures/PRN232-LMS-LAB2-weighted.postman_collection.json}"
 DEMO_RUBRIC_JSON="${DEMO_RUBRIC_JSON:-${ROOT_DIR}/fixtures/prn232-weighted-rubric.json}"
 
 for command in awk curl jq seq sort tr unzip; do
@@ -441,6 +779,7 @@ require_positive_integer DEMO_SUBMIT_CONCURRENCY "${DEMO_SUBMIT_CONCURRENCY}"
 require_positive_integer DEMO_MONITOR_TIMEOUT_SECONDS "${DEMO_MONITOR_TIMEOUT_SECONDS}"
 require_positive_integer DEMO_WAIT_TIMEOUT_SECONDS "${DEMO_WAIT_TIMEOUT_SECONDS}"
 require_positive_integer DEMO_MONITOR_POLL_SECONDS "${DEMO_MONITOR_POLL_SECONDS}"
+require_positive_integer DEMO_EXPECTED_RUNNER_CONCURRENCY "${DEMO_EXPECTED_RUNNER_CONCURRENCY}"
 require_positive_integer DEMO_CURL_CONNECT_TIMEOUT_SECONDS "${DEMO_CURL_CONNECT_TIMEOUT_SECONDS}"
 require_positive_integer DEMO_CURL_API_TIMEOUT_SECONDS "${DEMO_CURL_API_TIMEOUT_SECONDS}"
 require_positive_integer DEMO_CURL_UPLOAD_TIMEOUT_SECONDS "${DEMO_CURL_UPLOAD_TIMEOUT_SECONDS}"
@@ -449,6 +788,9 @@ require_positive_integer DEMO_CURL_HEALTH_TIMEOUT_SECONDS "${DEMO_CURL_HEALTH_TI
 DEMO_WAIT_FOR_COMPLETION="${DEMO_WAIT_FOR_COMPLETION,,}"
 [[ "${DEMO_WAIT_FOR_COMPLETION}" == true || "${DEMO_WAIT_FOR_COMPLETION}" == false ]] \
   || fail "DEMO_WAIT_FOR_COMPLETION must be true or false."
+DEMO_VARIANT_MODE="${DEMO_VARIANT_MODE,,}"
+[[ "${DEMO_VARIANT_MODE}" == uniform || "${DEMO_VARIANT_MODE}" == mixed ]] \
+  || fail "DEMO_VARIANT_MODE must be uniform or mixed."
 DEMO_ALLOW_REMOTE="${DEMO_ALLOW_REMOTE,,}"
 [[ "${DEMO_ALLOW_REMOTE}" == true || "${DEMO_ALLOW_REMOTE}" == false ]] \
   || fail "DEMO_ALLOW_REMOTE must be true or false."
@@ -462,6 +804,14 @@ DEFAULT_DEMO_STUDENT_PASSWORD='DemoBurst123!'
 DEMO_STUDENT_PASSWORD="${DEMO_STUDENT_PASSWORD:-${DEFAULT_DEMO_STUDENT_PASSWORD}}"
 RUN_ID="${DEMO_RUN_ID:-$(date -u +%Y%m%d%H%M%S)-${RANDOM}}"
 [[ "${RUN_ID}" =~ ^[A-Za-z0-9-]{1,48}$ ]] || fail "DEMO_RUN_ID may contain only letters, numbers, and hyphens (maximum 48 characters)."
+
+if [[ -z "${EVAL_COLLECTION_JSON:-}" ]]; then
+  if [[ "${DEMO_VARIANT_MODE}" == mixed ]]; then
+    EVAL_COLLECTION_JSON="${ROOT_DIR}/../test/dist/evaluation/PRN232-LMS-LAB2-weighted.postman_collection.json"
+  else
+    EVAL_COLLECTION_JSON="${ROOT_DIR}/fixtures/PRN232-LMS-LAB2-weighted.postman_collection.json"
+  fi
+fi
 
 if is_local_gateway_url "${GATEWAY_URL}"; then
   IS_LOCAL_GATEWAY=true
@@ -482,7 +832,6 @@ else
   fi
 fi
 
-[[ -f "${EVAL_FIXTURE_ZIP}" ]] || fail "Fixture ZIP not found: ${EVAL_FIXTURE_ZIP}"
 [[ -f "${EVAL_COLLECTION_JSON}" ]] || fail "Postman collection not found: ${EVAL_COLLECTION_JSON}"
 [[ -f "${DEMO_RUBRIC_JSON}" ]] || fail "Weighted rubric not found: ${DEMO_RUBRIC_JSON}"
 jq -e . "${EVAL_COLLECTION_JSON}" >/dev/null || fail "Postman collection is not valid JSON."
@@ -501,19 +850,24 @@ while IFS= read -r match_pattern; do
     || fail "Weighted collection has no assertion containing rubric pattern: ${match_pattern}"
 done < <(jq -r '.criteria[].matchPattern' "${DEMO_RUBRIC_JSON}")
 
-mapfile -t zip_entries < <(unzip -Z1 "${EVAL_FIXTURE_ZIP}")
-root_compose_count=0
-for entry in "${zip_entries[@]}"; do
-  [[ "${entry}" == docker-compose.yml || "${entry}" == compose.yaml ]] && ((root_compose_count += 1)) || true
-  [[ "${entry}" == */docker-compose.yml || "${entry}" == */compose.yaml ]] \
-    && fail "Fixture compose file must be at ZIP root, not ${entry}."
-done
-[[ "${root_compose_count}" == 1 ]] || fail "Fixture ZIP must contain exactly one root docker-compose.yml or compose.yaml."
+if [[ "${DEMO_VARIANT_MODE}" == uniform ]]; then
+  [[ -f "${EVAL_FIXTURE_ZIP}" ]] || fail "Fixture ZIP not found: ${EVAL_FIXTURE_ZIP}"
+  validate_submission_zip "${EVAL_FIXTURE_ZIP}" true
+else
+  for variant_name in "${VARIANT_NAMES[@]}"; do
+    variant_zip="${DEMO_VARIANTS_DIR}/${variant_name}.zip"
+    validate_submission_zip "${variant_zip}" true
+  done
+fi
+
+build_demo_assignment_plan
+print_demo_assignment_plan
 
 umask 077
 TMP_DIR="$(mktemp -d)"
 STUDENTS_DIR="${TMP_DIR}/students"
 OVERVIEW_RESPONSE="${TMP_DIR}/overview.json"
+RECENT_RESPONSE="${TMP_DIR}/recent.json"
 mkdir -p "${STUDENTS_DIR}"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
@@ -584,6 +938,7 @@ for index in $(seq 1 "${DEMO_SUBMISSION_COUNT}"); do
   printf -v padded '%03d' "${index}"
   [[ -f "${STUDENTS_DIR}/${padded}/prepared" ]] || fail "Student ${padded} has no prepared submission."
 done
+assert_unique_prepared_records
 log "Prepared ${DEMO_SUBMISSION_COUNT}/${DEMO_SUBMISSION_COUNT}. Starting completion burst."
 
 burst_started="$(date +%s)"
@@ -617,6 +972,9 @@ fi
 if [[ "${DEMO_WAIT_FOR_COMPLETION}" == true ]]; then
   log "DEMO_WAIT_FOR_COMPLETION=true; waiting for all real evaluations to finish."
   wait_for_terminal_evaluations || fail "Terminal evaluation wait did not finish cleanly."
+  if [[ "${DEMO_VARIANT_MODE}" == mixed ]]; then
+    assert_terminal_weighted_results || fail "Mixed weighted result verification failed."
+  fi
   assert_monitor_pacing || fail "Final evaluation runner pacing verification failed."
   check_required_services
   if [[ "${IS_LOCAL_GATEWAY}" == true ]]; then
