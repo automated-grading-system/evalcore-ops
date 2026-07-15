@@ -8,27 +8,27 @@
 			header Origin http://localhost:3000
 		}
 		header @api_origin_next {
-			Access-Control-Allow-Origin "{http.request.header.Origin}"
-			Access-Control-Allow-Credentials true
-			Vary Origin
+			>Access-Control-Allow-Origin "{http.request.header.Origin}"
+			>Access-Control-Allow-Credentials true
+			>Vary Origin
 		}
 		@api_origin_vite {
 			path /api/*
 			header Origin http://localhost:5173
 		}
 		header @api_origin_vite {
-			Access-Control-Allow-Origin "{http.request.header.Origin}"
-			Access-Control-Allow-Credentials true
-			Vary Origin
+			>Access-Control-Allow-Origin "{http.request.header.Origin}"
+			>Access-Control-Allow-Credentials true
+			>Vary Origin
 		}
 		@api_origin_production {
 			path /api/*
 			header Origin https://prn232.dorriss.com
 		}
 		header @api_origin_production {
-			Access-Control-Allow-Origin "{http.request.header.Origin}"
-			Access-Control-Allow-Credentials true
-			Vary Origin
+			>Access-Control-Allow-Origin "{http.request.header.Origin}"
+			>Access-Control-Allow-Credentials true
+			>Vary Origin
 		}
 
 		@api_preflight_next {
