@@ -10,7 +10,7 @@ APP_COMPOSE := docker compose --env-file $(ROOT_ENV_FILE)
 
 .PHONY: env infra-up infra-down infra-reset infra-logs infra-ps smoke-infra
 .PHONY: gateway-up gateway-down gateway-restart gateway-logs gateway-ps smoke-auth auth-stack-up auth-stack-down
-.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-notification
+.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-notification demo-100-submissions
 .PHONY: services-pull services-up services-down web-up stack-up stack-down
 
 env:
@@ -89,6 +89,9 @@ smoke-evaluation: env
 
 smoke-notification: env
 	./scripts/smoke-notification.sh
+
+demo-100-submissions: env
+	./scripts/demo-100-submissions.sh
 
 auth-stack-up:
 	$(MAKE) infra-up

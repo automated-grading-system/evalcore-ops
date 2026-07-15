@@ -234,6 +234,84 @@ The app smoke test covers the full gateway path:
 
 `make smoke-notification` runs the evaluation smoke, verifies the Notification inbox, notification, and delivery rows, and verifies the student's notification APIs through the gateway.
 
+## Live grading burst demo
+
+EvalCore deliberately separates accepting a submission from running its untrusted
+project. Submission events are published through the durable outbox to RabbitMQ,
+the Evaluation Service records queued evaluations in PostgreSQL as a durable
+waiting room, and the runner starts only
+`EVALUATION_RUNNER_CONCURRENCY` isolated Docker sandboxes at once. The default is
+`2`; the system intentionally does not start 100 Docker jobs when 100 students
+submit together.
+
+Run the real API demo with:
+
+```bash
+make demo-100-submissions
+```
+
+The lecturer frontend must already be running and its live monitor route must be
+reachable. The script checks this before it creates any accounts, classes, or
+submissions:
+
+```bash
+cd ../prn232-pe-evaluation-fe
+bun run dev
+```
+
+The script creates a fresh class and active lab, registers 100 unique student
+accounts through Identity, joins them to the class, uploads the real evaluation
+fixture once per submission, and then completes the submissions in a bounded
+burst. It never seeds the database and never calls a manual evaluation endpoint.
+It waits only until all accepted events appear in the Evaluation database; the
+Docker evaluations continue in the background while the lecturer watches
+`http://localhost:3000/lecturer/live-grading`.
+
+After intake, the script verifies that scoped `running` and global `activeSlots`
+do not exceed the API's numeric `runnerConcurrency`, rechecks service health,
+and, for a local Gateway, reports active `evalcore-*` Compose projects and
+rejects excess projects or exited sandbox leftovers.
+
+Tune HTTP burst size independently from runner pacing:
+
+```bash
+DEMO_SUBMISSION_COUNT=10 DEMO_SUBMIT_CONCURRENCY=5 make demo-100-submissions
+```
+
+To keep polling until every evaluation reaches a terminal state, opt in
+explicitly. Failures and errors are printed and cause a non-zero exit:
+
+```bash
+DEMO_WAIT_FOR_COMPLETION=true make demo-100-submissions
+```
+
+Useful optional settings are `DEMO_MONITOR_TIMEOUT_SECONDS` (default `300`),
+`DEMO_WAIT_TIMEOUT_SECONDS` (default `14400`), `DEMO_MONITOR_POLL_SECONDS`
+(default `2`), `DEMO_FRONTEND_URL`, `EVAL_FIXTURE_ZIP`, and
+`EVAL_COLLECTION_JSON`. API calls and uploads also have bounded connection and
+request timeouts so a stalled service cannot leave a parallel worker hanging;
+override `DEMO_CURL_CONNECT_TIMEOUT_SECONDS`,
+`DEMO_CURL_HEALTH_TIMEOUT_SECONDS`, `DEMO_CURL_API_TIMEOUT_SECONDS`, or
+`DEMO_CURL_UPLOAD_TIMEOUT_SECONDS` only when the target environment needs it.
+Each run uses fresh timestamped accounts and data so that its lab-scoped monitor
+counts remain unambiguous.
+
+For safety, `GATEWAY_URL` must use `localhost`, `127.0.0.1`, or `[::1]` by
+default. A deliberate staging run must opt in, use an HTTPS Gateway so demo
+credentials and tokens remain encrypted in transit, and point at a reachable
+frontend:
+
+```bash
+DEMO_ALLOW_REMOTE=true \
+GATEWAY_URL=https://api-staging.example.com \
+DEMO_FRONTEND_URL=https://staging.example.com \
+make demo-100-submissions
+```
+
+Remote runs never use the local demo student password. Set a non-default
+`DEMO_STUDENT_PASSWORD`, or leave it empty and the script generates a strong
+per-run password without printing it.
+
 ## Credentials
 
 RabbitMQ:
