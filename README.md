@@ -244,6 +244,17 @@ waiting room, and the runner starts only
 `2`; the system intentionally does not start 100 Docker jobs when 100 students
 submit together.
 
+For the review environment, use `EVALUATION_STARTUP_TIMEOUT_SECONDS=180`. This
+gives a freshly created sandbox database more time to initialize without
+changing, suppressing, or manufacturing an evaluation result. Existing `.env`
+files override the Compose default, so update that local value before recreating
+the runner if it is still set to `90`.
+
+After starting or recreating the stack, run `make smoke-evaluation` once before
+the full burst. That honest end-to-end check validates the fixture and warms the
+Docker image/build cache; it does not seed evaluation results or bypass the
+normal submission event path.
+
 Run the real API demo with:
 
 ```bash

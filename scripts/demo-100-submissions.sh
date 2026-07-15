@@ -504,6 +504,8 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 check_required_services
 log "Gateway and required services are healthy."
 preflight_frontend_monitor
+log "Recommended frontend: ${DEMO_FRONTEND_URL%/}/lecturer/live-grading"
+log "Warm-up recommendation: run 'make smoke-evaluation' once after starting or recreating the stack before the full 100-submission review."
 
 MAIN_REQUEST="${TMP_DIR}/request.json"
 MAIN_RESPONSE="${TMP_DIR}/response.json"
@@ -572,10 +574,13 @@ done
 log "Submitted ${DEMO_SUBMISSION_COUNT}/${DEMO_SUBMISSION_COUNT} in ${burst_elapsed}s."
 
 MONITOR_URL="${DEMO_FRONTEND_URL%/}/lecturer/live-grading?labId=${LAB_ID}"
-log "Evaluation monitor: ${MONITOR_URL}"
+log "LIVE GRADING MONITOR: ${MONITOR_URL}"
+log "Frontend base route: ${DEMO_FRONTEND_URL%/}/lecturer/live-grading"
 log "Waiting for RabbitMQ/outbox intake to create ${DEMO_SUBMISSION_COUNT} durable evaluation rows."
 wait_for_monitor_intake || fail "Evaluation monitor did not observe the full accepted burst."
 assert_monitor_pacing || fail "Evaluation runner pacing verification failed."
+log "Runner concurrency: ${VERIFIED_RUNNER_CONCURRENCY}"
+log "${DEMO_SUBMISSION_COUNT} submissions are accepted immediately; only ${VERIFIED_RUNNER_CONCURRENCY} evaluations run at once."
 check_required_services
 log "Gateway and required services remain healthy after the accepted burst."
 if [[ "${IS_LOCAL_GATEWAY}" == true ]]; then
@@ -594,7 +599,9 @@ if [[ "${DEMO_WAIT_FOR_COMPLETION}" == true ]]; then
     inspect_local_sandboxes "${VERIFIED_RUNNER_CONCURRENCY}" "${VERIFIED_ACTIVE_SLOTS}" \
       || fail "Final local Docker sandbox verification failed."
   fi
+  log "Live monitor: ${MONITOR_URL}"
   log "Done. All ${DEMO_SUBMISSION_COUNT} evaluations reached terminal state."
 else
+  log "Live monitor: ${MONITOR_URL}"
   log "Done. Evaluations will continue processing in the background."
 fi
