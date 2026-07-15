@@ -1,0 +1,1309 @@
+{
+  "info": {
+    "_postman_id": "0f0c4d20-7467-49ac-8e73-8bbd5d984b58",
+    "name": "PRN232 LMS LAB2 Weighted Rubric Evaluation",
+    "description": "Weighted-rubric demo collection. All assertions exercise real runtime behavior. Architecture, naming, model coverage, and code quality labels are documented HTTP/OpenAPI proxies; source-level proof requires static analysis.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "adminUsername",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "userUsername",
+      "value": "user",
+      "type": "string"
+    },
+    {
+      "key": "userPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "adminAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "newAdminAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "newAdminRefreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "createdSubjectId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "routeStudentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Docker Deployment: compose-hosted application is healthy', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('healthy');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Content negotiation",
+      "item": [
+        {
+          "name": "Students JSON",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pagination Metadata: returns JSON ApiResponse page', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data).to.be.an('object');",
+                  "  pm.expect(json.data.pagination).to.be.an('object');",
+                  "  pm.expect(json.data.pagination.page).to.eql(1);",
+                  "  pm.expect(json.data.pagination.pageSize).to.eql(3);",
+                  "  pm.expect(json.data.content).to.be.an('array').with.length(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Students XML",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns XML response', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('xml');",
+                  "  pm.expect(pm.response.text()).to.include('ApiResponse');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unsupported Accept",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/csv"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('unsupported Accept returns 406', function () {",
+                  "  pm.response.to.have.status(406);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public resources",
+      "item": [
+        {
+          "name": "v1 Students list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('DB Schema & Seed Data: seeded students are queryable', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.pagination.totalItems).to.be.at.least(50);",
+                  "  pm.expect(json.data.content).to.be.an('array').with.length(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "v1 Students by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students/1"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('GET by ID: returns student by id', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.studentId).to.eql(1);",
+                  "  pm.expect(json.data.email).to.eql('student01@lms.local');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "v1 Student not found",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students/999999"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Response Format & HTTP Status: missing student returns 404 envelope', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "v1 Students query features",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students?page=1&size=3&search=student&sort=fullName&fields=studentId,fullName,email&expand=enrollments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('List API Capabilities: returns shaped student page', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.pagination.pageSize).to.eql(3);",
+                  "  pm.expect(json.data.content).to.be.an('array').with.length(3);",
+                  "  pm.expect(json.data.content[0]).to.have.property('studentId');",
+                  "  pm.expect(json.data.content[0]).to.have.property('fullName');",
+                  "  pm.expect(json.data.content[0]).to.have.property('email');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "v1 Courses list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/courses?page=1&size=3&expand=semester,subject"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns courses page with expanded data', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.content).to.be.an('array').with.length(3);",
+                  "  pm.expect(json.data.content[0]).to.have.property('semester');",
+                  "  pm.expect(json.data.content[0]).to.have.property('subject');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "v1 Enrollments list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/enrollments?page=1&size=3&expand=student,course"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns enrollments page with expanded data', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.content).to.be.an('array').with.length(3);",
+                  "  pm.expect(json.data.content[0]).to.have.property('student');",
+                  "  pm.expect(json.data.content[0]).to.have.property('course');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "v2 Students list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v2/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns v2 students page', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.content).to.be.an('array').with.length(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login admin success",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('admin login returns token pair without sensitive hashes', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(json.data.refreshToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(json.data.expiresIn).to.be.a('number');",
+                  "  pm.expect(json.data.username).to.eql('admin');",
+                  "  pm.expect(json.data.role).to.eql('Admin');",
+                  "  const bodyText = JSON.stringify(json).toLowerCase();",
+                  "  pm.expect(bodyText).to.not.include('passwordhash');",
+                  "  pm.expect(bodyText).to.not.include('refreshtokenhash');",
+                  "  pm.expect(bodyText).to.not.include('tokenhash');",
+                  "});",
+                  "pm.collectionVariables.set('adminAccessToken', json.data.accessToken);",
+                  "pm.collectionVariables.set('adminRefreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login user success",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{userUsername}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('user login returns token pair without sensitive hashes', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(json.data.refreshToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(json.data.username).to.eql('user');",
+                  "  pm.expect(json.data.role).to.eql('User');",
+                  "  const bodyText = JSON.stringify(json).toLowerCase();",
+                  "  pm.expect(bodyText).to.not.include('passwordhash');",
+                  "  pm.expect(bodyText).to.not.include('refreshtokenhash');",
+                  "  pm.expect(bodyText).to.not.include('tokenhash');",
+                  "});",
+                  "pm.collectionVariables.set('userAccessToken', json.data.accessToken);",
+                  "pm.collectionVariables.set('userRefreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"wrong-password\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('wrong password returns safe auth failure', function () {",
+                  "  pm.expect([400, 401]).to.include(pm.response.code);",
+                  "  const bodyText = pm.response.text().toLowerCase();",
+                  "  pm.expect(bodyText).to.not.include('passwordhash');",
+                  "  pm.expect(bodyText).to.not.include('refreshtokenhash');",
+                  "  pm.expect(bodyText).to.not.include('tokenhash');",
+                  "  pm.expect(bodyText).to.not.include('not found');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Refresh token behavior",
+      "item": [
+        {
+          "name": "Refresh admin token success",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/refresh-token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const oldRefreshToken = pm.collectionVariables.get('adminRefreshToken');",
+                  "const json = pm.response.json();",
+                  "pm.test('refresh returns rotated token pair', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(json.data.refreshToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(json.data.refreshToken).to.not.eql(oldRefreshToken);",
+                  "});",
+                  "pm.collectionVariables.set('newAdminAccessToken', json.data.accessToken);",
+                  "pm.collectionVariables.set('newAdminRefreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reuse old admin refresh token should fail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/refresh-token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('old refresh token cannot be reused', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh with invalid token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"invalid-refresh-token\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/refresh-token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invalid refresh token returns safe failure', function () {",
+                  "  pm.expect([400, 401]).to.include(pm.response.code);",
+                  "  pm.expect(pm.response.text().toLowerCase()).to.not.include('tokenhash');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Validation",
+      "item": [
+        {
+          "name": "Subject credit invalid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectCode\": \"LAB999\",\n  \"subjectName\": \"Authorization Smoke\",\n  \"credit\": 0\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/subjects"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invalid credit returns validation failure', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "  pm.expect(json.errors).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student invalid FPTU email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "postman-validation-smoke"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Test Student\",\n  \"email\": \"abc@fpt.edu.vn\",\n  \"dateOfBirth\": \"2000-01-01\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/students"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invalid FPTU student email returns FluentValidation failure', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "  pm.expect(JSON.stringify(json).toLowerCase()).to.include('fptu');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student future DOB",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "postman-validation-smoke"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Test Student\",\n  \"email\": \"test.student@example.com\",\n  \"dateOfBirth\": \"2999-01-01\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/students"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('future date of birth returns validation failure', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "  pm.expect(JSON.stringify(json).toLowerCase()).to.include('future');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authorization",
+      "item": [
+        {
+          "name": "Protected write without token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectCode\": \"LAB997\",\n  \"subjectName\": \"Authorization Smoke No Token\",\n  \"credit\": 3\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/subjects"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('protected write without token returns 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected write with admin token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectCode\": \"LABA{{$timestamp}}\",\n  \"subjectName\": \"Authorization Smoke Admin {{$timestamp}}\",\n  \"credit\": 3\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/subjects"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('valid admin token creates a subject', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.subjectId).to.be.a('number');",
+                  "  pm.expect(json.data.subjectCode).to.match(/^LABA\\d+$/);",
+                  "});",
+                  "pm.collectionVariables.set('createdSubjectId', String(json.data.subjectId));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected write with refreshed admin token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{newAdminAccessToken}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectCode\": \"LABR{{$timestamp}}\",\n  \"subjectName\": \"Authorization Smoke Refreshed {{$timestamp}}\",\n  \"credit\": 3\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/subjects"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('refreshed admin token creates a subject', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.subjectId).to.be.a('number');",
+                  "  pm.expect(json.data.subjectCode).to.match(/^LABR\\d+$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public GET still works without token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('public GET does not require token', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin role",
+      "item": [
+        {
+          "name": "Admin check without token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/admin-check"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('admin endpoint without token returns 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin check with user token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userAccessToken}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/admin-check"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('user token returns 403 for admin endpoint', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin check with admin token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/admin-check"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('admin token passes admin endpoint', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin check with refreshed admin token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{newAdminAccessToken}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/admin-check"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('refreshed admin token passes admin endpoint', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Advanced routing and versioning",
+      "item": [
+        {
+          "name": "Nested course students",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/courses/1/students?page=1&size=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('nested course students route returns page', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.pagination.pageSize).to.eql(5);",
+                  "  pm.expect(json.data.content).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nested course not found",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/courses/999999/students?page=1&size=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('missing course returns 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Route constraint invalid student ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/students/abc"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('non-integer id does not call int id action', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unsupported API version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v99/students?page=1&size=3"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('unsupported API version fails safely', function () {",
+                  "  pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Named route create smoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "postman-created-route-smoke"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Route Student {{$timestamp}}\",\n  \"email\": \"route{{$timestamp}}@example.com\",\n  \"dateOfBirth\": \"2000-01-01\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/students"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('create smoke reaches action and named route is valid', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data.studentId).to.be.a('number');",
+                  "  pm.expect(pm.response.headers.get('Location')).to.include('/api/v1/students/');",
+                  "});",
+                  "pm.collectionVariables.set('routeStudentId', String(json.data.studentId));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rubric runtime proxies",
+      "item": [
+        {
+          "name": "Swagger document",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/swagger/v1/swagger.json"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const spec = pm.response.json();",
+                  "const pathNames = Object.keys(spec.paths || {}).map(path => path.toLowerCase());",
+                  "const operations = Object.values(spec.paths || {}).flatMap(path => ['get', 'post', 'put', 'patch', 'delete'].map(method => path[method]).filter(Boolean));",
+                  "const requiredResources = ['students', 'courses', 'enrollments', 'subjects'];",
+                  "pm.test('3-layer Architecture: runtime API proxy exposes a controller surface', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(operations.length).to.be.greaterThan(10);",
+                  "});",
+                  "pm.test('Project Naming Convention: OpenAPI title uses PRN232 LMS API', function () {",
+                  "  pm.expect(spec.info && spec.info.title).to.eql('PRN232 LMS API');",
+                  "});",
+                  "pm.test('4 Model Types: required resource models have API paths', function () {",
+                  "  requiredResources.forEach(resource => pm.expect(pathNames.some(path => path.includes('/' + resource))).to.eql(true));",
+                  "});",
+                  "pm.test('RESTful Endpoint Naming: required resources use noun-based paths', function () {",
+                  "  requiredResources.forEach(resource => pm.expect(pathNames.some(path => path.includes('/api/v1/' + resource))).to.eql(true));",
+                  "});",
+                  "pm.test('Swagger/OpenAPI: valid v1 document is available', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(spec.openapi || spec.swagger).to.be.a('string');",
+                  "  pm.expect(spec.paths).to.be.an('object');",
+                  "});",
+                  "pm.test('Code Quality: documented operations declare responses', function () {",
+                  "  pm.expect(operations.length).to.be.greaterThan(10);",
+                  "  pm.expect(operations.every(operation => operation.responses && Object.keys(operation.responses).length > 0)).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

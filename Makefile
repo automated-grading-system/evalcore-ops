@@ -10,7 +10,7 @@ APP_COMPOSE := docker compose --env-file $(ROOT_ENV_FILE)
 
 .PHONY: env infra-up infra-down infra-reset infra-logs infra-ps smoke-infra
 .PHONY: gateway-up gateway-down gateway-restart gateway-logs gateway-ps smoke-auth auth-stack-up auth-stack-down
-.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-notification demo-100-submissions
+.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-rubric smoke-notification demo-100-submissions
 .PHONY: services-pull services-up services-down web-up stack-up stack-down
 
 env:
@@ -85,6 +85,13 @@ smoke-app: env
 	./scripts/smoke-auth-gateway.sh
 
 smoke-evaluation: env
+	./scripts/smoke-evaluation.sh
+
+smoke-rubric: env
+	EVAL_COLLECTION_JSON="$(CURDIR)/fixtures/PRN232-LMS-LAB2-weighted.postman_collection.json" \
+	EVAL_RUBRIC_JSON="$(CURDIR)/fixtures/prn232-weighted-rubric.json" \
+	EVAL_EXPECTED_REQUESTS=34 \
+	EVAL_EXPECTED_ASSERTIONS=40 \
 	./scripts/smoke-evaluation.sh
 
 smoke-notification: env

@@ -232,6 +232,16 @@ The app smoke test covers the full gateway path:
 
 `make smoke-evaluation` uses the known-good fixture under `../test/dist/evaluation`, exercises the automatic consumer path only, and verifies the final score, artifacts, published outbox event, and sandbox cleanup. Override the fixture paths with `EVAL_FIXTURE_ZIP` and `EVAL_COLLECTION_JSON` when needed.
 
+Evaluation scoring has two explicit modes:
+
+- Labs without a rubric keep the original equal-assertion policy. Passing assertions are divided by total assertions and scaled to a maximum score of 100.
+- Labs with criteria configured through `PUT /api/labs/{labId}/rubric` use the lecturer-defined weights. A criterion receives its full weight only when every matching Newman assertion passes; a required criterion with no match receives zero and is reported as missing.
+
+The original `make smoke-evaluation` path intentionally has no rubric. It remains the regression check for equal-assertion fallback.
+Run `make smoke-rubric` for the corresponding end-to-end weighted check. It
+configures the 10-point fixture, runs the weighted collection, and verifies the
+evaluation API plus `report.json` scoring breakdown.
+
 `make smoke-notification` runs the evaluation smoke, verifies the Notification inbox, notification, and delivery rows, and verifies the student's notification APIs through the gateway.
 
 ## Live grading burst demo
@@ -270,7 +280,8 @@ cd ../prn232-pe-evaluation-fe
 bun run dev
 ```
 
-The script creates a fresh class and active lab, registers 100 unique student
+The script creates a fresh class and active lab, configures the 12-criterion
+10-point rubric from `fixtures/prn232-weighted-rubric.json`, registers 100 unique student
 accounts through Identity, joins them to the class, uploads the real evaluation
 fixture once per submission, and then completes the submissions in a bounded
 burst. It never seeds the database and never calls a manual evaluation endpoint.
@@ -296,10 +307,21 @@ explicitly. Failures and errors are printed and cause a non-zero exit:
 DEMO_WAIT_FOR_COMPLETION=true make demo-100-submissions
 ```
 
+The burst demo defaults to
+`fixtures/PRN232-LMS-LAB2-weighted.postman_collection.json`. Its assertion
+names contain the rubric match patterns and still execute real HTTP/OpenAPI
+checks. Docker Deployment is represented by successful Compose readiness plus
+the health assertion. Architecture, project naming, model coverage, and Code
+Quality use documented runtime/OpenAPI proxies; Newman alone cannot fully prove
+source organization or maintainability. A future static-analysis plugin should
+replace those proxies where full rigor is required.
+
 Useful optional settings are `DEMO_MONITOR_TIMEOUT_SECONDS` (default `300`),
 `DEMO_WAIT_TIMEOUT_SECONDS` (default `14400`), `DEMO_MONITOR_POLL_SECONDS`
 (default `2`), `DEMO_FRONTEND_URL`, `EVAL_FIXTURE_ZIP`, and
-`EVAL_COLLECTION_JSON`. API calls and uploads also have bounded connection and
+`EVAL_COLLECTION_JSON`. Override `DEMO_RUBRIC_JSON` only together with a
+collection whose real assertion names match every required criterion. API calls
+and uploads also have bounded connection and
 request timeouts so a stalled service cannot leave a parallel worker hanging;
 override `DEMO_CURL_CONNECT_TIMEOUT_SECONDS`,
 `DEMO_CURL_HEALTH_TIMEOUT_SECONDS`, `DEMO_CURL_API_TIMEOUT_SECONDS`, or

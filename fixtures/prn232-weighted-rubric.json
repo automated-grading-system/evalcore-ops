@@ -1,0 +1,124 @@
+{
+  "criteria": [
+    {
+      "key": "three_layer_architecture",
+      "title": "3-layer Architecture",
+      "description": "API, service, and repository responsibilities are separated. The demo uses an OpenAPI/runtime proxy; full proof requires static analysis.",
+      "maxScore": 1.2,
+      "sortOrder": 1,
+      "matchType": "contains",
+      "matchPattern": "3-layer Architecture",
+      "isRequired": true
+    },
+    {
+      "key": "project_naming_convention",
+      "title": "Project Naming Convention",
+      "description": "Projects and public API metadata follow the PRN232 naming convention. The demo checks the published API title.",
+      "maxScore": 0.4,
+      "sortOrder": 2,
+      "matchType": "contains",
+      "matchPattern": "Project Naming Convention",
+      "isRequired": true
+    },
+    {
+      "key": "db_schema_seed_data",
+      "title": "DB Schema & Seed Data",
+      "description": "The application starts with a usable schema and the expected seeded records.",
+      "maxScore": 0.8,
+      "sortOrder": 3,
+      "matchType": "contains",
+      "matchPattern": "DB Schema & Seed Data",
+      "isRequired": true
+    },
+    {
+      "key": "four_model_types",
+      "title": "4 Model Types",
+      "description": "The API exposes the required student, course, enrollment, and subject resources.",
+      "maxScore": 1.0,
+      "sortOrder": 4,
+      "matchType": "contains",
+      "matchPattern": "4 Model Types",
+      "isRequired": true
+    },
+    {
+      "key": "restful_endpoint_naming",
+      "title": "RESTful Endpoint Naming",
+      "description": "Resource endpoints use noun-based REST paths.",
+      "maxScore": 0.7,
+      "sortOrder": 5,
+      "matchType": "contains",
+      "matchPattern": "RESTful Endpoint Naming",
+      "isRequired": true
+    },
+    {
+      "key": "get_by_id",
+      "title": "GET by ID",
+      "description": "A resource can be retrieved by its stable identifier.",
+      "maxScore": 0.6,
+      "sortOrder": 6,
+      "matchType": "contains",
+      "matchPattern": "GET by ID",
+      "isRequired": true
+    },
+    {
+      "key": "list_api_capabilities",
+      "title": "List API Capabilities",
+      "description": "List APIs support the required query and response-shaping behavior.",
+      "maxScore": 1.5,
+      "sortOrder": 7,
+      "matchType": "contains",
+      "matchPattern": "List API Capabilities",
+      "isRequired": true
+    },
+    {
+      "key": "pagination_metadata",
+      "title": "Pagination Metadata",
+      "description": "Paged responses include usable page metadata and content.",
+      "maxScore": 0.4,
+      "sortOrder": 8,
+      "matchType": "contains",
+      "matchPattern": "Pagination Metadata",
+      "isRequired": true
+    },
+    {
+      "key": "response_format_http_status",
+      "title": "Response Format & HTTP Status",
+      "description": "Success and error responses use the documented envelope and HTTP status codes.",
+      "maxScore": 0.8,
+      "sortOrder": 9,
+      "matchType": "contains",
+      "matchPattern": "Response Format & HTTP Status",
+      "isRequired": true
+    },
+    {
+      "key": "docker_deployment",
+      "title": "Docker Deployment",
+      "description": "The application runs in the isolated Compose sandbox and serves a healthy endpoint.",
+      "maxScore": 1.0,
+      "sortOrder": 10,
+      "matchType": "contains",
+      "matchPattern": "Docker Deployment",
+      "isRequired": true
+    },
+    {
+      "key": "swagger_openapi",
+      "title": "Swagger/OpenAPI",
+      "description": "A valid OpenAPI document is available at runtime.",
+      "maxScore": 0.5,
+      "sortOrder": 11,
+      "matchType": "contains",
+      "matchPattern": "Swagger/OpenAPI",
+      "isRequired": true
+    },
+    {
+      "key": "code_quality",
+      "title": "Code Quality",
+      "description": "Public operations are consistently documented. The demo is a runtime proxy; full proof requires static analysis.",
+      "maxScore": 1.1,
+      "sortOrder": 12,
+      "matchType": "contains",
+      "matchPattern": "Code Quality",
+      "isRequired": true
+    }
+  ]
+}

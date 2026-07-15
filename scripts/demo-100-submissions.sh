@@ -426,7 +426,8 @@ DEMO_CURL_API_TIMEOUT_SECONDS="${DEMO_CURL_API_TIMEOUT_SECONDS:-30}"
 DEMO_CURL_UPLOAD_TIMEOUT_SECONDS="${DEMO_CURL_UPLOAD_TIMEOUT_SECONDS:-120}"
 DEMO_CURL_HEALTH_TIMEOUT_SECONDS="${DEMO_CURL_HEALTH_TIMEOUT_SECONDS:-10}"
 EVAL_FIXTURE_ZIP="${EVAL_FIXTURE_ZIP:-${ROOT_DIR}/../test/dist/evaluation/PRN232.LMS-Evaluation-Submission.zip}"
-EVAL_COLLECTION_JSON="${EVAL_COLLECTION_JSON:-${ROOT_DIR}/../test/dist/evaluation/PRN232-LMS-LAB2.postman_collection.json}"
+EVAL_COLLECTION_JSON="${EVAL_COLLECTION_JSON:-${ROOT_DIR}/fixtures/PRN232-LMS-LAB2-weighted.postman_collection.json}"
+DEMO_RUBRIC_JSON="${DEMO_RUBRIC_JSON:-${ROOT_DIR}/fixtures/prn232-weighted-rubric.json}"
 
 for command in awk curl jq seq sort tr unzip; do
   command -v "${command}" >/dev/null 2>&1 || fail "${command} is required."
@@ -483,7 +484,22 @@ fi
 
 [[ -f "${EVAL_FIXTURE_ZIP}" ]] || fail "Fixture ZIP not found: ${EVAL_FIXTURE_ZIP}"
 [[ -f "${EVAL_COLLECTION_JSON}" ]] || fail "Postman collection not found: ${EVAL_COLLECTION_JSON}"
+[[ -f "${DEMO_RUBRIC_JSON}" ]] || fail "Weighted rubric not found: ${DEMO_RUBRIC_JSON}"
 jq -e . "${EVAL_COLLECTION_JSON}" >/dev/null || fail "Postman collection is not valid JSON."
+jq -e '
+  (.criteria | length) == 12 and
+  ([.criteria[].maxScore] | add) == 10 and
+  (all(.criteria[];
+    (.key | type == "string" and length > 0) and
+    (.matchPattern | type == "string" and length > 0) and
+    .maxScore > 0))
+' "${DEMO_RUBRIC_JSON}" >/dev/null || fail "Weighted rubric must contain 12 valid criteria totaling 10.0."
+while IFS= read -r match_pattern; do
+  jq -e --arg pattern "${match_pattern}" \
+    '[.. | strings | select(contains($pattern))] | length > 0' \
+    "${EVAL_COLLECTION_JSON}" >/dev/null \
+    || fail "Weighted collection has no assertion containing rubric pattern: ${match_pattern}"
+done < <(jq -r '.criteria[].matchPattern' "${DEMO_RUBRIC_JSON}")
 
 mapfile -t zip_entries < <(unzip -Z1 "${EVAL_FIXTURE_ZIP}")
 root_compose_count=0
@@ -540,6 +556,14 @@ REQUIREMENT_UPLOAD_URL="$(jq -er '.data.upload.requirementUploadUrl // .upload.r
 COLLECTION_UPLOAD_URL="$(jq -er '.data.upload.collectionUploadUrl // .upload.collectionUploadUrl' "${MAIN_RESPONSE}")" \
   || fail "Create lab returned no collection upload URL."
 log "Created lab: ${LAB_ID}"
+
+request PUT "/api/labs/${LAB_ID}/rubric" "${LECTURER_TOKEN}" "${DEMO_RUBRIC_JSON}" "${MAIN_RESPONSE}"
+require_request_ok "Configure weighted rubric" "${MAIN_RESPONSE}" || fail "Weighted rubric configuration failed."
+jq -e '
+  (.data.totalScore // .totalScore | tonumber) == 10 and
+  (.data.criteria // .criteria | length) == 12
+' "${MAIN_RESPONSE}" >/dev/null || fail "Class Service did not return the expected 10-point weighted rubric."
+log "Configured the 12-criterion weighted rubric (10.0 points)."
 
 put_file "${REQUIREMENT_PDF}" "${REQUIREMENT_UPLOAD_URL}" "${TMP_DIR}/requirement-upload.txt"
 is_2xx || fail "Requirement PDF upload failed with HTTP ${HTTP_STATUS:-000}."
