@@ -148,6 +148,7 @@ check_required_services() {
   retry_health "${GATEWAY_URL}/class/health" "Class Service"
   retry_health "${GATEWAY_URL}/submission/health" "Submission Service"
   retry_health "${GATEWAY_URL}/evaluation/health" "Evaluation Service"
+  retry_health "${GATEWAY_URL}/grading/health" "Grading Service"
   retry_health "${GATEWAY_URL}/notification/health" "Notification Service"
 }
 

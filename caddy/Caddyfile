@@ -113,6 +113,12 @@
 			reverse_proxy http://{$EVALUATION_UPSTREAM}
 		}
 
+		# Health-only route for the internal Grading gRPC Service.
+		handle /grading/health {
+			rewrite * /health
+			reverse_proxy http://{$GRADING_UPSTREAM}
+		}
+
 		# Identity internal routes deliberately have no public proxy route.
 		handle /notification/health {
 			rewrite * /health

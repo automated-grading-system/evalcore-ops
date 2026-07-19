@@ -63,7 +63,7 @@ make app-down
 The root `compose.yaml` is the primary entry point:
 
 - `docker compose up -d` starts infrastructure only (Postgres, RabbitMQ, MinIO).
-- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + split Evaluation API/runner + Notification Service + Caddy gateway + Dozzle.
+- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + split Evaluation API/runner + independent Grading gRPC Service + Notification Service + Caddy gateway + Dozzle.
 
 ## App Stack Services
 
@@ -77,6 +77,7 @@ The root `compose.yaml` is the primary entry point:
 | Submission Service | Lab submissions and source assets |
 | Evaluation Service | Public evaluation API and event consumer |
 | Evaluation Runner | Internal Docker sandbox worker (no public port) |
+| Grading Service | Internal synchronous gRPC scoring |
 | Notification Service | Evaluation result notifications and SMTP delivery |
 | Gateway (Caddy)  | Reverse proxy / API gateway |
 | Dozzle           | Local Docker container log viewer |
@@ -90,12 +91,16 @@ make app-up
 make app-ps
 make smoke-app
 make smoke-evaluation
+make smoke-rubric
+make smoke-grpc
 make smoke-notification
 make app-logs
 make app-down
 ```
 
 `make app-up` does not build backend images. Docker Compose pulls the configured images from DockerHub.
+For an unpushed local Grading build, tag it as `evalcore-grading-service:local`
+and start the stack with `GRADING_IMAGE=evalcore-grading-service:local docker compose --profile app up -d`.
 
 ## URLs
 
@@ -104,6 +109,8 @@ make app-down
 - Class Service direct: `http://localhost:8082`
 - Submission Service direct: `http://localhost:8083`
 - Evaluation Service direct: `http://localhost:8084`
+- Grading Service gRPC: `http://localhost:5007` (local development only)
+- Grading Service health: `http://localhost:8087/health`
 - Notification Service direct: `http://localhost:8086`
 - MinIO API: `http://localhost:9000`
 - MinIO Console: `http://localhost:9001`
@@ -120,6 +127,7 @@ make app-down
 | `GET /class/health` | Class Service    |
 | `GET /submission/health` | Submission Service |
 | `GET /evaluation/health` | Evaluation Service |
+| `GET /grading/health` | Grading Service HTTP health endpoint |
 | `GET /notification/health` | Notification Service |
 | `/api/auth/*`       | Identity Service |
 | `/api/users/*`      | Identity Service |
@@ -143,6 +151,7 @@ IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:main
 CLASS_IMAGE=dorrissdang/evalcore-class-service:main
 SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:main
 EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:main
+GRADING_IMAGE=dorrissdang/evalcore-grading-service:main
 NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:main
 ```
 
@@ -160,6 +169,9 @@ SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:sha-xxxx
 
 EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:v1
 EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:sha-xxxx
+
+GRADING_IMAGE=dorrissdang/evalcore-grading-service:v1
+GRADING_IMAGE=dorrissdang/evalcore-grading-service:sha-xxxx
 
 NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:v1
 NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:sha-xxxx
@@ -227,8 +239,19 @@ The app smoke test covers the full gateway path:
 7. Student completes submission assets and the submission becomes submitted.
 8. Student lists and opens their submitted work.
 9. Lecturer lists lab submissions and downloads the submitted ZIP.
-10. Evaluation consumes `SubmissionSubmitted`, runs the isolated Docker Compose/Newman sandbox, and publishes `EvaluationCompleted`.
-11. Notification consumes `EvaluationCompleted`, resolves the student through Identity's protected internal endpoint, and creates an email delivery record. Set `NOTIFICATION_EMAIL_ENABLED=true` plus SMTP settings in `.env` to send email; otherwise the delivery is recorded as `skipped`.
+10. Evaluation consumes `SubmissionSubmitted`, runs the isolated Docker Compose/Newman sandbox, and calls the independent Grading Service over gRPC with the real assertion results and rubric snapshot.
+11. Grading returns the equal-assertion or weighted-rubric result; Evaluation persists it in the report/API/live monitor and publishes `EvaluationCompleted`.
+12. Notification consumes `EvaluationCompleted`, resolves the student through Identity's protected internal endpoint, and creates an email delivery record. Set `NOTIFICATION_EMAIL_ENABLED=true` plus SMTP settings in `.env` to send email; otherwise the delivery is recorded as `skipped`.
+
+External user interactions use REST APIs through the gateway. RabbitMQ remains the
+asynchronous event-driven channel for submission and evaluation lifecycle events.
+gRPC is reserved for synchronous internal scoring: after Newman finishes,
+Evaluation sends the extracted assertion results and rubric criteria to Grading,
+which encapsulates both equal-assertion and weighted-rubric scoring.
+
+Demo sentence: “After Newman generates assertion results, Evaluation Service calls
+an independent gRPC Grading Service to calculate the final weighted score. This is
+the system’s gRPC communication requirement.”
 
 `make smoke-evaluation` uses the known-good fixture under `../test/dist/evaluation`, exercises the automatic consumer path only, and verifies the final score, artifacts, published outbox event, and sandbox cleanup. Override the fixture paths with `EVAL_FIXTURE_ZIP` and `EVAL_COLLECTION_JSON` when needed.
 
@@ -241,6 +264,11 @@ The original `make smoke-evaluation` path intentionally has no rubric. It remain
 Run `make smoke-rubric` for the corresponding end-to-end weighted check. It
 configures the 10-point fixture, runs the weighted collection, and verifies the
 evaluation API plus `report.json` scoring breakdown.
+
+Run `make smoke-grpc` with the app profile running to verify Grading health directly
+and through the gateway, confirm both Evaluation processes have gRPC enabled, and
+then run the full weighted rubric smoke. If the API or report exposes a scoring
+provider field, the smoke also requires that provider to be `grpc`.
 
 `make smoke-notification` runs the evaluation smoke, verifies the Notification inbox, notification, and delivery rows, and verifies the student's notification APIs through the gateway.
 

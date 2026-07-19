@@ -201,6 +201,26 @@ services:
     # The published image may not include curl/wget in its runtime layer.
     # Readiness is verified externally by scripts/smoke-auth-gateway.sh.
 
+  grading-service:
+    profiles:
+      - app
+    image: ${GRADING_IMAGE:-dorrissdang/evalcore-grading-service:main}
+    container_name: ${GRADING_CONTAINER_NAME:-ags-grading-service}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "127.0.0.1:${GRADING_GRPC_PORT:-5007}:5007"
+      - "${GRADING_HEALTH_PORT:-8087}:8080"
+    networks:
+      - ags-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
   evaluation-service:
     profiles:
       - app
@@ -218,6 +238,8 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
       CLASS_SERVICE_BASE_URL: http://class-service:8080
       SUBMISSION_SERVICE_BASE_URL: http://submission-service:8080
+      GRADING_GRPC_ENABLED: ${GRADING_GRPC_ENABLED:-true}
+      GRADING_GRPC_URL: ${GRADING_GRPC_URL:-http://grading-service:5007}
       S3_INTERNAL_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
@@ -252,6 +274,8 @@ services:
         condition: service_started
       submission-service:
         condition: service_started
+      grading-service:
+        condition: service_healthy
     networks:
       - ags-network
     restart: unless-stopped
@@ -280,6 +304,8 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
       CLASS_SERVICE_BASE_URL: http://class-service:8080
       SUBMISSION_SERVICE_BASE_URL: http://submission-service:8080
+      GRADING_GRPC_ENABLED: ${GRADING_GRPC_ENABLED:-true}
+      GRADING_GRPC_URL: ${GRADING_GRPC_URL:-http://grading-service:5007}
       S3_INTERNAL_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-ags}
@@ -327,6 +353,8 @@ services:
       submission-service:
         condition: service_started
       evaluation-service:
+        condition: service_healthy
+      grading-service:
         condition: service_healthy
     networks:
       - ags-network
@@ -388,6 +416,7 @@ services:
       SUBMISSION_UPSTREAM: ${SUBMISSION_UPSTREAM:-submission-service:8080}
       EVALUATION_UPSTREAM: ${EVALUATION_UPSTREAM:-evaluation-service:8080}
       NOTIFICATION_UPSTREAM: ${NOTIFICATION_UPSTREAM:-notification-service:8080}
+      GRADING_UPSTREAM: ${GRADING_UPSTREAM:-grading-service:8080}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     volumes:
@@ -403,6 +432,8 @@ services:
         condition: service_healthy
       notification-service:
         condition: service_started
+      grading-service:
+        condition: service_healthy
     networks:
       - ags-network
     restart: unless-stopped
