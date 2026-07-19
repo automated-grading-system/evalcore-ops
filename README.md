@@ -287,6 +287,22 @@ The application profile pulls backend images from DockerHub and runs PostgreSQL,
 
 Use a Linux host with Docker Compose, persistent volumes, a public DNS name, TLS termination, firewall rules, and an external secret store or protected environment file. Publish only the gateway and required storage upload endpoint. Keep PostgreSQL, RabbitMQ, internal service ports, and gRPC private; disable or protect Dozzle and infrastructure consoles outside a trusted network.
 
+The local PostgreSQL, RabbitMQ, and MinIO containers are intentionally retained for the demo and still start because application services have health-gated dependencies on them. When an on-prem deployment uses shared infrastructure, point applications to it with the service-specific `*_DATABASE_URL` values, `RABBITMQ_HOST`/`RABBITMQ_PORT`, and `S3_INTERNAL_ENDPOINT`. Move the unused local host bindings out of the way if those ports are already occupied:
+
+```dotenv
+POSTGRES_PORT=15432
+RABBITMQ_PUBLISHED_PORT=15674
+RABBITMQ_MANAGEMENT_PORT=15675
+MINIO_API_PORT=19000
+MINIO_CONSOLE_PORT=19001
+```
+
+`RABBITMQ_PUBLISHED_PORT` affects only the local Compose container. Keep `RABBITMQ_PORT` set to the port of the shared broker, normally `5672`. This separation prevents a dummy local host binding from changing the application connection port.
+
+For external S3/MinIO, `S3_PUBLIC_ENDPOINT` must be reachable by browsers and must not use `localhost` in a deployed environment. `S3_INTERNAL_ENDPOINT` must be reachable from the application containers. When both use the same public HTTPS endpoint, such as `https://storage.dorriss.com`, set `S3_USE_SSL=true`. Configure CORS on the external MinIO server itself; `MINIO_API_CORS_ALLOW_ORIGIN` configures only the local Compose-managed MinIO. Replace the default `JWT_SECRET` and `INTERNAL_SERVICE_TOKEN` before production or on-prem startup.
+
+Run `make check-onprem-env` before `docker compose --profile app up -d`. Do not run `docker compose down -v` on an on-prem host unless local volumes are intentionally being erased.
+
 ### Cloud / Vercel Placeholder
 
 Deploy `prn232-pe-evaluation-fe` to Vercel and configure `NEXT_PUBLIC_API_URL` with the public HTTPS gateway URL. Run the backend stack on a Docker-capable VPS or cloud VM with managed PostgreSQL/S3 substitutions where appropriate. Replace this section with the final provider, region, domain, and evidence links before submission.
@@ -304,8 +320,9 @@ A Cloudflare Tunnel can publish the HTTPS gateway and MinIO upload endpoint with
 | `GRADING_IMAGE` | Internal gRPC scorer image. | `dorrissdang/evalcore-grading-service:main` |
 | `NOTIFICATION_IMAGE` | Notification API and consumer image. | `dorrissdang/evalcore-notification-service:main` |
 | `POSTGRES_*` | Database name, user, password, and host port. | Change all demonstration credentials. |
-| `RABBITMQ_*` | Broker credentials, exchange, and ports. | Keep management access private in production. |
-| `S3_PUBLIC_ENDPOINT` | Browser-reachable presigned-upload origin. | Use public HTTPS outside local development. |
+| `RABBITMQ_*` | Broker credentials, exchange, and application connection port. | Use `RABBITMQ_PUBLISHED_PORT` only for the local broker's host binding. |
+| `S3_ENDPOINT`, `S3_INTERNAL_ENDPOINT` | Container-reachable object-storage origins. | May use the same external HTTPS endpoint. |
+| `S3_PUBLIC_ENDPOINT` | Browser-reachable presigned-upload origin. | Use public HTTPS outside local development; never deployed `localhost`. |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | MinIO/S3 credentials. | Store as deployment secrets. |
 | `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE` | Token signing and validation. | Use a strong secret and consistent values. |
 | `INTERNAL_SERVICE_TOKEN` | Trusted backend-to-backend authorization. | Never expose to browsers. |

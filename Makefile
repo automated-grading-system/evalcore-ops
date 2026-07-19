@@ -10,7 +10,7 @@ APP_COMPOSE := docker compose --env-file $(ROOT_ENV_FILE)
 
 .PHONY: env infra-up infra-down infra-reset infra-logs infra-ps smoke-infra
 .PHONY: gateway-up gateway-down gateway-restart gateway-logs gateway-ps smoke-auth auth-stack-up auth-stack-down
-.PHONY: app-pull app-up app-down app-restart app-ps app-logs smoke-app smoke-evaluation smoke-rubric smoke-grpc smoke-notification smoke-swagger
+.PHONY: app-pull app-up app-down app-restart app-ps app-logs check-onprem-env smoke-app smoke-evaluation smoke-rubric smoke-grpc smoke-notification smoke-swagger
 .PHONY: demo-build-variants demo-100-submissions demo-10-submissions-mixed demo-100-submissions-mixed
 .PHONY: services-pull services-up services-down web-up stack-up stack-down
 
@@ -81,6 +81,9 @@ app-ps: env
 
 app-logs: env
 	$(APP_COMPOSE) --profile app logs -f
+
+check-onprem-env:
+	./scripts/check-onprem-env.sh
 
 smoke-app: env
 	./scripts/smoke-auth-gateway.sh
