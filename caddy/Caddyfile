@@ -125,6 +125,47 @@
 			reverse_proxy http://{$NOTIFICATION_UPSTREAM}
 		}
 
+		# Single Swagger UI portal and same-origin OpenAPI documents. The gRPC
+		# Grading Service is intentionally excluded because it is not a REST API.
+		handle /docs/openapi/identity.json {
+			rewrite * /swagger/v1/swagger.json
+			reverse_proxy http://{$IDENTITY_UPSTREAM} {
+				method GET
+			}
+		}
+
+		handle /docs/openapi/class.json {
+			rewrite * /swagger/v1/swagger.json
+			reverse_proxy http://{$CLASS_UPSTREAM} {
+				method GET
+			}
+		}
+
+		handle /docs/openapi/submission.json {
+			rewrite * /swagger/v1/swagger.json
+			reverse_proxy http://{$SUBMISSION_UPSTREAM} {
+				method GET
+			}
+		}
+
+		handle /docs/openapi/evaluation.json {
+			rewrite * /swagger/v1/swagger.json
+			reverse_proxy http://{$EVALUATION_UPSTREAM} {
+				method GET
+			}
+		}
+
+		handle /docs/openapi/notification.json {
+			rewrite * /swagger/v1/swagger.json
+			reverse_proxy http://{$NOTIFICATION_UPSTREAM} {
+				method GET
+			}
+		}
+
+		handle /docs/swagger* {
+			reverse_proxy http://swagger-ui:8080
+		}
+
 		# Identity API routes keep their /api prefixes when proxied upstream.
 		handle /api/auth/* {
 			reverse_proxy http://{$IDENTITY_UPSTREAM}

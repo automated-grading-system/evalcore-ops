@@ -405,6 +405,19 @@ services:
       - ags-network
     restart: unless-stopped
 
+  swagger-ui:
+    profiles:
+      - app
+    image: swaggerapi/swagger-ui:latest
+    container_name: ags-swagger-ui
+    environment:
+      BASE_URL: /docs/swagger
+      URLS: >-
+        [{"name":"Identity API","url":"/docs/openapi/identity.json"},{"name":"Class API","url":"/docs/openapi/class.json"},{"name":"Submission API","url":"/docs/openapi/submission.json"},{"name":"Evaluation API","url":"/docs/openapi/evaluation.json"},{"name":"Notification API","url":"/docs/openapi/notification.json"}]
+    networks:
+      - ags-network
+    restart: unless-stopped
+
   gateway:
     profiles:
       - app
@@ -434,6 +447,8 @@ services:
         condition: service_started
       grading-service:
         condition: service_healthy
+      swagger-ui:
+        condition: service_started
     networks:
       - ags-network
     restart: unless-stopped
