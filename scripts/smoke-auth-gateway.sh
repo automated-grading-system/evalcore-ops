@@ -74,6 +74,13 @@ load_env_file "${LEGACY_ENV_FILE}"
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}"
 MINIO_PUBLIC_URL="${S3_PUBLIC_ENDPOINT:-http://localhost:9000}"
+LAB_ASSETS_BUCKET="${LAB_ASSETS_BUCKET:-lab-assets}"
+SUBMISSION_ASSETS_BUCKET="${SUBMISSION_ASSETS_BUCKET:-submission-assets}"
+EVALUATION_REPORTS_BUCKET="${EVALUATION_REPORTS_BUCKET:-evaluation-reports}"
+
+LAB_ASSETS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${LAB_ASSETS_BUCKET}/"
+SUBMISSION_ASSETS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${SUBMISSION_ASSETS_BUCKET}/"
+EVALUATION_REPORTS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${EVALUATION_REPORTS_BUCKET}/"
 
 LECTURER_EMAIL="lecturer@ags.local"
 LECTURER_PASSWORD="Password123!"
@@ -416,6 +423,11 @@ if [[ -n "${requirement_upload_url}" && "${requirement_upload_url}" != "null" ]]
   if echo "${requirement_upload_url}" | grep -q 'http://minio:'; then
     fail "Presigned URLs expose internal Docker DNS (http://minio:...). Check S3_PUBLIC_ENDPOINT config."
   fi
+  if [[ "${requirement_upload_url}" != "${LAB_ASSETS_PUBLIC_PREFIX}"* ]]; then
+    log "Expected lab asset upload URL prefix: ${LAB_ASSETS_PUBLIC_PREFIX}"
+    log "Actual lab requirement upload URL: ${requirement_upload_url%%\?*}"
+    fail "Lab requirement upload URL does not use configured S3 public endpoint/bucket."
+  fi
   log "Presigned upload URLs use public endpoint OK."
 
   log "Uploading requirement PDF to presigned URL..."
@@ -431,6 +443,11 @@ else
 fi
 
 if [[ -n "${collection_upload_url}" && "${collection_upload_url}" != "null" ]]; then
+  if [[ "${collection_upload_url}" != "${LAB_ASSETS_PUBLIC_PREFIX}"* ]]; then
+    log "Expected lab asset upload URL prefix: ${LAB_ASSETS_PUBLIC_PREFIX}"
+    log "Actual lab collection upload URL: ${collection_upload_url%%\?*}"
+    fail "Lab collection upload URL does not use configured S3 public endpoint/bucket."
+  fi
   log "Uploading Postman collection JSON to presigned URL..."
   upload_status="$(curl -sS -o /dev/null -w "%{http_code}" -X PUT --upload-file "${upload_json}" "${collection_upload_url}")" || upload_status="000"
   if [[ "${upload_status}" -ge 200 && "${upload_status}" -lt 300 ]]; then
@@ -626,10 +643,10 @@ if [[ "${submission_status}" != "pending_assets" ]]; then
   fail "Submission status after create is '${submission_status}', expected 'pending_assets'."
 fi
 
-if [[ "${project_upload_url}" != http://localhost:9000/submission-assets/* ]]; then
-  log "Create submission response body:"
-  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
-  fail "Submission project upload URL does not use http://localhost:9000/submission-assets/."
+if [[ "${project_upload_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
+  log "Expected submission upload URL prefix: ${SUBMISSION_ASSETS_PUBLIC_PREFIX}"
+  log "Actual submission upload URL: ${project_upload_url%%\?*}"
+  fail "Submission project upload URL does not use configured S3 public endpoint/bucket."
 fi
 log "Student created submission ID: ${submission_id}"
 
@@ -821,10 +838,10 @@ if ! jq -e '.success == true' "${response_body_file}" >/dev/null 2>&1; then
 fi
 
 source_download_url="$(jq -r '.data.url // empty' "${response_body_file}")"
-if [[ "${source_download_url}" != http://localhost:9000/submission-assets/* ]]; then
-  log "Source ZIP URL response body:"
-  sed 's/^/[smoke-app]   /' "${response_body_file}" >&2
-  fail "Source ZIP URL does not use http://localhost:9000/submission-assets/."
+if [[ "${source_download_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
+  log "Expected source ZIP URL prefix: ${SUBMISSION_ASSETS_PUBLIC_PREFIX}"
+  log "Actual source ZIP URL: ${source_download_url%%\?*}"
+  fail "Source ZIP URL does not use configured S3 public endpoint/bucket."
 fi
 log "Lecturer source ZIP URL OK."
 

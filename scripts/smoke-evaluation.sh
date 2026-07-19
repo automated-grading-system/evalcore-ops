@@ -57,6 +57,12 @@ done
 
 load_env_file "${ROOT_ENV_FILE}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}"
+MINIO_PUBLIC_URL="${S3_PUBLIC_ENDPOINT:-http://localhost:9000}"
+LAB_ASSETS_BUCKET="${LAB_ASSETS_BUCKET:-lab-assets}"
+SUBMISSION_ASSETS_BUCKET="${SUBMISSION_ASSETS_BUCKET:-submission-assets}"
+
+LAB_ASSETS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${LAB_ASSETS_BUCKET}/"
+SUBMISSION_ASSETS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${SUBMISSION_ASSETS_BUCKET}/"
 
 [[ -f "${EVAL_FIXTURE_ZIP}" ]] || fail "Fixture ZIP not found: ${EVAL_FIXTURE_ZIP}"
 [[ -f "${EVAL_COLLECTION_JSON}" ]] || fail "Postman collection not found: ${EVAL_COLLECTION_JSON}"
@@ -119,8 +125,16 @@ lab_id="$(id_from_response)"
 [[ -n "${lab_id}" ]] || fail "Create lab did not return an ID."
 requirement_upload_url="$(jq -r '.data.upload.requirementUploadUrl // .upload.requirementUploadUrl // empty' "${response_body}")"
 collection_upload_url="$(jq -r '.data.upload.collectionUploadUrl // .upload.collectionUploadUrl // empty' "${response_body}")"
-[[ "${requirement_upload_url}" == http://localhost:9000/lab-assets/* ]] || fail "Lab requirement upload URL does not use the public lab-assets endpoint."
-[[ "${collection_upload_url}" == http://localhost:9000/lab-assets/* ]] || fail "Lab collection upload URL does not use the public lab-assets endpoint."
+if [[ "${requirement_upload_url}" != "${LAB_ASSETS_PUBLIC_PREFIX}"* ]]; then
+  log "Expected lab asset upload URL prefix: ${LAB_ASSETS_PUBLIC_PREFIX}"
+  log "Actual lab requirement upload URL: ${requirement_upload_url%%\?*}"
+  fail "Lab requirement upload URL does not use configured S3 public endpoint/bucket."
+fi
+if [[ "${collection_upload_url}" != "${LAB_ASSETS_PUBLIC_PREFIX}"* ]]; then
+  log "Expected lab asset upload URL prefix: ${LAB_ASSETS_PUBLIC_PREFIX}"
+  log "Actual lab collection upload URL: ${collection_upload_url%%\?*}"
+  fail "Lab collection upload URL does not use configured S3 public endpoint/bucket."
+fi
 
 if [[ -n "${EVAL_RUBRIC_JSON}" ]]; then
   api PUT "/api/labs/${lab_id}/rubric" "${lecturer_token}" "$(jq -c . "${EVAL_RUBRIC_JSON}")"
@@ -140,7 +154,14 @@ api POST "/api/labs/${lab_id}/submissions" "${student_token}" "${submission_body
 require_ok "Create submission"
 submission_id="$(jq -r '.data.submission.id // empty' "${response_body}")"
 project_upload_url="$(jq -r '.data.upload.projectUploadUrl // empty' "${response_body}")"
-[[ -n "${submission_id}" && "${project_upload_url}" == http://localhost:9000/submission-assets/* ]] || fail "Submission creation did not return the expected ID and public upload URL."
+if [[ -z "${submission_id}" ]]; then
+  fail "Submission creation did not return an ID."
+fi
+if [[ "${project_upload_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
+  log "Expected submission upload URL prefix: ${SUBMISSION_ASSETS_PUBLIC_PREFIX}"
+  log "Actual submission upload URL: ${project_upload_url%%\?*}"
+  fail "Submission creation did not return the configured public upload URL."
+fi
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' -X PUT --upload-file "${EVAL_FIXTURE_ZIP}" "${project_upload_url}")" == 200 ]] || fail "Fixture ZIP upload failed."
 
 api POST "/api/submissions/${submission_id}/assets/complete" "${student_token}" '{"projectUploaded":true}'
