@@ -3,21 +3,41 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_ENV_FILE="${ROOT_DIR}/.env"
-EVAL_FIXTURE_ZIP="${EVAL_FIXTURE_ZIP:-${ROOT_DIR}/../test/dist/evaluation/PRN232.LMS-Evaluation-Submission.zip}"
-EVAL_COLLECTION_JSON="${EVAL_COLLECTION_JSON:-${ROOT_DIR}/../test/dist/evaluation/PRN232-LMS-LAB2.postman_collection.json}"
-EVAL_RUBRIC_JSON="${EVAL_RUBRIC_JSON:-}"
-EVAL_EXPECTED_REQUESTS="${EVAL_EXPECTED_REQUESTS:-33}"
-EVAL_EXPECTED_ASSERTIONS="${EVAL_EXPECTED_ASSERTIONS:-34}"
+LEGACY_ENV_FILE="${ROOT_DIR}/compose/.env"
 
 log() { printf '[smoke-evaluation] %s\n' "$1"; }
 fail() { log "FAILURE: $1" >&2; exit 1; }
 
-load_env_file() {
+load_env_preserve_existing() {
   local env_file="$1" line
   [[ -f "${env_file}" ]] || return 0
   while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
     [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
-    export "${line}"
+    [[ "${line}" == *=* ]] || continue
+
+    local key="${line%%=*}"
+    local value="${line#*=}"
+    key="$(printf '%s' "${key}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+    case "${key}" in
+      ''|*[!A-Za-z0-9_]*|[0-9]*) continue ;;
+    esac
+
+    if [[ -n "${!key+x}" ]]; then
+      continue
+    fi
+
+    value="$(printf '%s' "${value}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [[ "${value}" == \"*\" && "${value}" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "${value}" == \'*\' && "${value}" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    else
+      value="$(printf '%s' "${value}" | sed 's/[[:space:]]#.*$//;s/[[:space:]]*$//')"
+    fi
+
+    export "${key}=${value}"
   done < "${env_file}"
 }
 
@@ -55,14 +75,23 @@ for command in curl jq unzip sha256sum docker; do
   command -v "${command}" >/dev/null 2>&1 || fail "${command} is required."
 done
 
-load_env_file "${ROOT_ENV_FILE}"
+load_env_preserve_existing "${ROOT_ENV_FILE}"
+load_env_preserve_existing "${LEGACY_ENV_FILE}"
+
+EVAL_FIXTURE_ZIP="${EVAL_FIXTURE_ZIP:-${ROOT_DIR}/../test/dist/evaluation/PRN232.LMS-Evaluation-Submission.zip}"
+EVAL_COLLECTION_JSON="${EVAL_COLLECTION_JSON:-${ROOT_DIR}/../test/dist/evaluation/PRN232-LMS-LAB2.postman_collection.json}"
+EVAL_RUBRIC_JSON="${EVAL_RUBRIC_JSON:-}"
+EVAL_EXPECTED_REQUESTS="${EVAL_EXPECTED_REQUESTS:-33}"
+EVAL_EXPECTED_ASSERTIONS="${EVAL_EXPECTED_ASSERTIONS:-34}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}"
-MINIO_PUBLIC_URL="${S3_PUBLIC_ENDPOINT:-http://localhost:9000}"
+MINIO_PUBLIC_URL="${MINIO_PUBLIC_URL:-${S3_PUBLIC_ENDPOINT:-http://localhost:9000}}"
 LAB_ASSETS_BUCKET="${LAB_ASSETS_BUCKET:-lab-assets}"
 SUBMISSION_ASSETS_BUCKET="${SUBMISSION_ASSETS_BUCKET:-submission-assets}"
+EVALUATION_REPORTS_BUCKET="${EVALUATION_REPORTS_BUCKET:-evaluation-reports}"
 
 LAB_ASSETS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${LAB_ASSETS_BUCKET}/"
 SUBMISSION_ASSETS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${SUBMISSION_ASSETS_BUCKET}/"
+EVALUATION_REPORTS_PUBLIC_PREFIX="${MINIO_PUBLIC_URL%/}/${EVALUATION_REPORTS_BUCKET}/"
 
 [[ -f "${EVAL_FIXTURE_ZIP}" ]] || fail "Fixture ZIP not found: ${EVAL_FIXTURE_ZIP}"
 [[ -f "${EVAL_COLLECTION_JSON}" ]] || fail "Postman collection not found: ${EVAL_COLLECTION_JSON}"
@@ -157,6 +186,9 @@ project_upload_url="$(jq -r '.data.upload.projectUploadUrl // empty' "${response
 if [[ -z "${submission_id}" ]]; then
   fail "Submission creation did not return an ID."
 fi
+if [[ "${project_upload_url}" == http://minio:* ]]; then
+  fail "Submission upload URL exposes internal Docker DNS. Check S3_PUBLIC_ENDPOINT config."
+fi
 if [[ "${project_upload_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
   log "Expected submission upload URL prefix: ${SUBMISSION_ASSETS_PUBLIC_PREFIX}"
   log "Actual submission upload URL: ${project_upload_url%%\?*}"
@@ -172,6 +204,14 @@ api GET "/api/submissions/${submission_id}/assets/source" "${lecturer_token}"
 require_ok "Get submission source URL"
 source_url="$(jq -r '.data.url // empty' "${response_body}")"
 [[ -n "${source_url}" ]] || fail "Submission source URL was not returned."
+if [[ "${source_url}" == http://minio:* ]]; then
+  fail "Source ZIP URL exposes internal Docker DNS. Check S3_PUBLIC_ENDPOINT config."
+fi
+if [[ "${source_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
+  log "Expected source ZIP URL prefix: ${SUBMISSION_ASSETS_PUBLIC_PREFIX}"
+  log "Actual source ZIP URL: ${source_url%%\?*}"
+  fail "Source ZIP URL does not use configured S3 public endpoint/bucket."
+fi
 curl -fsS -o "${source_download}" "${source_url}" || fail "Could not download submitted ZIP from MinIO."
 [[ "$(sha256sum "${EVAL_FIXTURE_ZIP}" | awk '{print $1}')" == "$(sha256sum "${source_download}" | awk '{print $1}')" ]] || fail "MinIO submission object SHA-256 differs from the fixture ZIP."
 log "Submission ${submission_id} is submitted and its MinIO object SHA-256 matches the fixture."

@@ -14,14 +14,38 @@ fail() {
   exit 1
 }
 
-load_env_file() {
-  local env_file="$1"
+load_env_preserve_existing() {
+  local env_file="$1" line key value
 
   [[ -f "${env_file}" ]] || return 0
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
     [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
-    export "${line}"
+    [[ "${line}" == *=* ]] || continue
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="$(printf '%s' "${key}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+    case "${key}" in
+      ''|*[!A-Za-z0-9_]*|[0-9]*) continue ;;
+    esac
+
+    if [[ -n "${!key+x}" ]]; then
+      continue
+    fi
+
+    value="$(printf '%s' "${value}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [[ "${value}" == \"*\" && "${value}" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "${value}" == \'*\' && "${value}" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    else
+      value="$(printf '%s' "${value}" | sed 's/[[:space:]]#.*$//;s/[[:space:]]*$//')"
+    fi
+
+    export "${key}=${value}"
   done < "${env_file}"
 }
 
@@ -69,11 +93,11 @@ fi
 # Load env
 # ---------------------------------------------------------------------------
 
-load_env_file "${ROOT_ENV_FILE}"
-load_env_file "${LEGACY_ENV_FILE}"
+load_env_preserve_existing "${ROOT_ENV_FILE}"
+load_env_preserve_existing "${LEGACY_ENV_FILE}"
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}"
-MINIO_PUBLIC_URL="${S3_PUBLIC_ENDPOINT:-http://localhost:9000}"
+MINIO_PUBLIC_URL="${MINIO_PUBLIC_URL:-${S3_PUBLIC_ENDPOINT:-http://localhost:9000}}"
 LAB_ASSETS_BUCKET="${LAB_ASSETS_BUCKET:-lab-assets}"
 SUBMISSION_ASSETS_BUCKET="${SUBMISSION_ASSETS_BUCKET:-submission-assets}"
 EVALUATION_REPORTS_BUCKET="${EVALUATION_REPORTS_BUCKET:-evaluation-reports}"
@@ -648,6 +672,9 @@ if [[ "${project_upload_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
   log "Actual submission upload URL: ${project_upload_url%%\?*}"
   fail "Submission project upload URL does not use configured S3 public endpoint/bucket."
 fi
+if [[ "${project_upload_url}" == http://minio:* ]]; then
+  fail "Submission upload URL exposes internal Docker DNS. Check S3_PUBLIC_ENDPOINT config."
+fi
 log "Student created submission ID: ${submission_id}"
 
 # ===========================================================================
@@ -838,6 +865,9 @@ if ! jq -e '.success == true' "${response_body_file}" >/dev/null 2>&1; then
 fi
 
 source_download_url="$(jq -r '.data.url // empty' "${response_body_file}")"
+if [[ "${source_download_url}" == http://minio:* ]]; then
+  fail "Source ZIP URL exposes internal Docker DNS. Check S3_PUBLIC_ENDPOINT config."
+fi
 if [[ "${source_download_url}" != "${SUBMISSION_ASSETS_PUBLIC_PREFIX}"* ]]; then
   log "Expected source ZIP URL prefix: ${SUBMISSION_ASSETS_PUBLIC_PREFIX}"
   log "Actual source ZIP URL: ${source_download_url%%\?*}"
