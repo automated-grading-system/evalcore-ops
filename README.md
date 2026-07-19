@@ -1,489 +1,359 @@
-# Automated Grading System Ops
+<div align="center">
+  <br />
+  <h1>🎓 EvalCore — Automated Grading System</h1>
+  <p>
+    Distributed .NET-based automated grading platform for programming assignments with sandboxed Docker evaluation, RabbitMQ async processing, gRPC scoring, weighted rubrics, notifications, and a live grading monitor.
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet" alt=".NET 8">
+    <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker">
+    <img src="https://img.shields.io/badge/RabbitMQ-Message%20Broker-FF6600?logo=rabbitmq" alt="RabbitMQ">
+    <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql" alt="PostgreSQL">
+    <img src="https://img.shields.io/badge/MinIO-S3%20Storage-C72E49?logo=minio" alt="MinIO">
+    <img src="https://img.shields.io/badge/gRPC-Scoring-244C5A?logo=google" alt="gRPC">
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs" alt="Next.js">
+    <img src="https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=githubactions" alt="CI/CD">
+    <img src="https://img.shields.io/badge/Images-DockerHub-2496ED?logo=docker" alt="DockerHub">
+    <img src="https://img.shields.io/badge/Vercel-deployment%20placeholder-000000?logo=vercel" alt="Vercel placeholder">
+    <img src="https://img.shields.io/badge/Deployment-Cloud%20%2F%20On--Prem-lightgrey" alt="Cloud or on-premises deployment">
+  </p>
+</div>
 
-This repository contains local Docker orchestration for the Automated Grading System.
+---
 
-## Recommended: Full Docker App Stack
+## 📑 Table of Contents
 
-This is the tester/developer path. It requires Docker only. It does not require any service source repository, a local .NET SDK, or a local backend build.
+- [🌟 About the Project](#-about-the-project)
+  - [✨ Key Features](#-key-features)
+  - [🛠️ Built With](#️-built-with)
+- [🏗️ Architecture](#️-architecture)
+  - [Service Responsibilities](#service-responsibilities)
+  - [Event and Background Processing](#event-and-background-processing)
+  - [gRPC Scoring Flow](#grpc-scoring-flow)
+- [🚀 Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Environment Setup](#environment-setup)
+  - [Docker Compose Guide](#docker-compose-guide)
+  - [Verify URLs](#verify-urls)
+- [📖 API Documentation](#-api-documentation)
+- [🧪 Usage and Demo](#-usage-and-demo)
+- [☁️ Deployment](#️-deployment)
+- [👥 Team Member Responsibilities](#-team-member-responsibilities)
+- [🗺️ Roadmap](#️-roadmap)
+- [📄 License](#-license)
+- [📧 Contact](#-contact)
 
-1. Copy env:
+---
 
-```bash
-cp .env.example .env
+## 🌟 About the Project
+
+**EvalCore** is a distributed platform for managing programming labs and automatically grading student submissions. Lecturers publish lab requirements and Postman collections, students upload ZIP projects through presigned object-storage URLs, and background workers evaluate the projects in isolated Docker Compose sandboxes.
+
+The platform combines REST APIs for user-facing workflows, RabbitMQ for reliable asynchronous processing, and an internal gRPC service for synchronous score calculation. Newman assertion results are evaluated against either an equal-assertion policy or a lecturer-defined weighted rubric, persisted for reporting, and surfaced through notifications and the lecturer live monitor.
+
+### ✨ Key Features
+
+- **Lecturer class and lab management** — create classes, enroll students, publish labs, and configure grading criteria.
+- **Secure lab assets** — role-aware access to requirements and private Postman collections.
+- **Student ZIP submission** — validate and track one or more programming-assignment attempts.
+- **Presigned MinIO upload** — upload lab and submission assets directly to S3-compatible storage.
+- **RabbitMQ event-driven evaluation** — accept submissions quickly and process them asynchronously.
+- **Docker sandbox runner** — build and start untrusted projects in bounded, isolated Compose projects.
+- **Newman/Postman API testing** — execute real HTTP assertions against the submitted application.
+- **Weighted rubric scoring** — map assertions to lecturer-defined criteria and score out of a configurable maximum.
+- **gRPC Grading Service** — centralize equal-assertion and weighted-rubric score calculation.
+- **Notification center and email delivery** — store in-app notifications and optionally deliver results through SMTP.
+- **Live grading monitor** — show queue, running, passed, failed, and infrastructure-error states.
+- **100-student mixed demo** — exercise realistic passing, assertion-failure, build, readiness, and Compose-error variants.
+- **Docker and cloud deployment** — run locally, on a VPS, or behind a managed tunnel and hosted frontend.
+
+### 🛠️ Built With
+
+**Frontend**
+
+- [Next.js](https://nextjs.org/) and [React](https://react.dev/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Bun](https://bun.sh/)
+
+**Backend**
+
+- [ASP.NET Core .NET 8](https://dotnet.microsoft.com/)
+- [Entity Framework Core](https://learn.microsoft.com/ef/core/) and PostgreSQL
+- JWT Bearer authentication and role-based authorization
+- [gRPC](https://grpc.io/) with Protocol Buffers
+- [RabbitMQ](https://www.rabbitmq.com/)
+- [MinIO](https://min.io/) / S3-compatible object storage
+- [MailKit](https://github.com/jstedfast/MailKit) and configurable SMTP delivery
+
+**DevOps and Delivery**
+
+- Docker and Docker Compose
+- Caddy API gateway
+- DockerHub service images
+- GitHub Actions CI/CD
+- Vercel frontend deployment placeholder
+- Cloudflare Tunnel / VPS deployment placeholder
+- Dozzle container log viewer
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    FE[Next.js Frontend] --> GW[Caddy Gateway]
+    GW --> ID[Identity Service]
+    GW --> CLS[Class Service]
+    GW --> SUB[Submission Service]
+    GW --> EVA[Evaluation Service]
+    GW --> NOTI[Notification Service]
+    SUB --> MQ[(RabbitMQ)]
+    EVA --> MQ
+    EVA --> GRPC[gRPC Grading Service]
+    EVA --> RUN[Evaluation Runner]
+    RUN --> DOCKER[Docker Sandbox]
+    RUN --> MINIO[(MinIO)]
+    CLS --> PG[(PostgreSQL)]
+    SUB --> PG
+    EVA --> PG
+    NOTI --> PG
 ```
 
-2. Pull latest images:
+Replace the placeholder below with the final deployed architecture export before submission:
+
+![EvalCore Architecture](docs/evalcore-architecture.png)
+
+### Service Responsibilities
+
+| Service | Responsibility |
+|---|---|
+| Identity Service | Registration, login, JWT issuance, roles, profiles, and trusted internal user lookup. |
+| Class Service | Classes, membership, labs, secure lab assets, and weighted-rubric configuration. |
+| Submission Service | Submission lifecycle, presigned ZIP uploads, asset completion, and `SubmissionSubmitted` publication. |
+| Evaluation Service | Evaluation REST API, durable evaluation records, reports, outbox publication, and live-monitor data. |
+| Evaluation Runner | RabbitMQ consumption, bounded concurrency, Docker sandbox orchestration, Newman execution, and cleanup. |
+| Grading gRPC Service | Synchronous calculation for equal-assertion and weighted-rubric scoring policies. |
+| Notification Service | `EvaluationCompleted` consumption, notification inbox persistence, and optional SMTP delivery. |
+| Frontend | Student and lecturer workflows, rubric editing, notifications, result views, and live grading monitor. |
+| Ops | Compose orchestration, gateway routing, data services, Swagger portal, smoke tests, and deployment configuration. |
+
+### Event and Background Processing
+
+1. Submission Service commits a submitted ZIP and publishes **`SubmissionSubmitted`** through its durable outbox to RabbitMQ.
+2. The Evaluation consumer creates durable evaluation work; the Evaluation Runner claims work, executes the sandbox, and stores the result.
+3. Evaluation publishes **`EvaluationCompleted`** through RabbitMQ after the final report is persisted.
+4. Notification consumes that event, creates the student's **notification**, and records or performs email delivery.
+
+The two principal background jobs are the **Evaluation consumer/runner** and the **Notification consumer/email-delivery worker**. RabbitMQ is the selected message broker for lifecycle events; it is not replaced by gRPC.
+
+### gRPC Scoring Flow
+
+After Newman completes, Evaluation sends the assertion results and immutable rubric snapshot to the internal Grading Service. Grading returns the scoring mode, earned and maximum scores, pass state, assertion totals, criterion breakdown, and unmatched assertions. Evaluation persists that response in its report, REST API, and live monitor.
+
+| Contract item | Value |
+|---|---|
+| Proto file | `../prn232-grading-service/src/Grading.Api/Protos/grading.proto` |
+| Proto package | `evalcore.grading.v1` |
+| Service | `GradingScorer` |
+| Method | `CalculateScore` |
+| Input | Scoring-mode hint, Newman assertion results, and rubric criteria snapshot. |
+| Output | Final score, maximum, percentage, pass state, assertion totals, criterion scores, and unmatched assertions. |
+| Internal endpoint | `http://grading-service:5007` inside the Compose network. |
+| HTTP health | Gateway: `http://localhost:8080/grading/health`; direct local check: `http://localhost:8087/health`. |
+
+The host gRPC port binds to loopback only. The gateway exposes health but does not publish the internal gRPC method.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Docker Engine with the Compose v2 plugin
+- GNU Make, Bash, `curl`, and `jq` for smoke and demo scripts
+- Bun only when running the frontend development server
+- Enough CPU, memory, and disk for Docker-in-Docker-style evaluation workloads
+
+### Environment Setup
+
+From the project workspace:
+
+```bash
+cd prn232-ops
+cp .env.example .env
+cp compose/.env.example compose/.env
+```
+
+The root `.env` configures the primary `compose.yaml`. The second file supports legacy host-mode commands. Never commit either generated `.env` file; replace demonstration credentials and secrets before any shared deployment.
+
+### Docker Compose Guide
+
+Pull published service images and start the application profile:
 
 ```bash
 docker compose --profile app pull
-```
-
-3. Start the full app stack:
-
-```bash
 docker compose --profile app up -d
-```
-
-or:
-
-```bash
-make app-up
-```
-
-4. Check status:
-
-```bash
 docker compose --profile app ps
 ```
 
-or:
-
-```bash
-make app-ps
-```
-
-5. Smoke test:
+Run the core acceptance suite:
 
 ```bash
 make smoke-app
+make smoke-evaluation
+make smoke-rubric
+make smoke-grpc
 ```
 
-6. Stop:
+Stop the stack while retaining volumes:
 
 ```bash
 docker compose --profile app down
 ```
 
-or:
+Use `docker compose --profile app down -v` only when a complete local data reset is intended.
 
-```bash
-make app-down
-```
+### Verify URLs
 
-The root `compose.yaml` is the primary entry point:
+| Component | URL | Expected result |
+|---|---|---|
+| Frontend local | [http://localhost:3000](http://localhost:3000) | Next.js UI when its dev server is running. |
+| Gateway | [http://localhost:8080](http://localhost:8080) | API gateway; `/health` returns HTTP 200. |
+| Swagger portal | [http://localhost:8080/docs/swagger](http://localhost:8080/docs/swagger) | One UI with five selectable REST APIs. |
+| RabbitMQ management | [http://localhost:15672](http://localhost:15672) | Broker management console. |
+| MinIO console | [http://localhost:9001](http://localhost:9001) | Object-storage administration console. |
+| Dozzle | [http://localhost:9999](http://localhost:9999) | Local container logs. |
 
-- `docker compose up -d` starts infrastructure only (Postgres, RabbitMQ, MinIO).
-- `docker compose --profile app up -d` starts infrastructure + Identity Service + Class Service + Submission Service + split Evaluation API/runner + independent Grading gRPC Service + Notification Service + Caddy gateway + Dozzle.
+---
 
-## App Stack Services
+## 📖 API Documentation
 
-| Service          | Role                        |
-|------------------|-----------------------------|
-| PostgreSQL       | Relational database         |
-| RabbitMQ         | Message broker              |
-| MinIO            | Object storage (S3-compat)  |
-| Identity Service | Auth and user management    |
-| Class Service    | Classes, labs, assets       |
-| Submission Service | Lab submissions and source assets |
-| Evaluation Service | Public evaluation API and event consumer |
-| Evaluation Runner | Internal Docker sandbox worker (no public port) |
-| Grading Service | Internal synchronous gRPC scoring |
-| Notification Service | Evaluation result notifications and SMTP delivery |
-| Gateway (Caddy)  | Reverse proxy / API gateway |
-| Dozzle           | Local Docker container log viewer |
+The single Swagger/OpenAPI portal is available at:
 
-## App Commands
+**[http://localhost:8080/docs/swagger](http://localhost:8080/docs/swagger)**
 
-```bash
-make env
-make app-pull
-make app-up
-make app-ps
-make smoke-app
-make smoke-evaluation
-make smoke-rubric
-make smoke-grpc
-make smoke-notification
-make app-logs
-make app-down
-```
+Use the selector at the top of Swagger UI to switch between Identity, Class, Submission, Evaluation, and Notification. Their same-origin documents are:
 
-`make app-up` does not build backend images. Docker Compose pulls the configured images from DockerHub.
-For an unpushed local Grading build, tag it as `evalcore-grading-service:local`
-and start the stack with `GRADING_IMAGE=evalcore-grading-service:local docker compose --profile app up -d`.
+- `/docs/openapi/identity.json`
+- `/docs/openapi/class.json`
+- `/docs/openapi/submission.json`
+- `/docs/openapi/evaluation.json`
+- `/docs/openapi/notification.json`
 
-## URLs
+Protected REST operations support JWT Bearer authentication in their generated specifications. The internal Grading method is gRPC and is therefore documented by its `.proto` contract instead of being forced into Swagger.
 
-- Gateway: `http://localhost:8080`
-- Identity direct: `http://localhost:8081`
-- Class Service direct: `http://localhost:8082`
-- Submission Service direct: `http://localhost:8083`
-- Evaluation Service direct: `http://localhost:8084`
-- Grading Service gRPC: `http://localhost:5007` (local development only)
-- Grading Service health: `http://localhost:8087/health`
-- Notification Service direct: `http://localhost:8086`
-- MinIO API: `http://localhost:9000`
-- MinIO Console: `http://localhost:9001`
-- RabbitMQ Console: `http://localhost:15672`
-- Dozzle Logs: `http://localhost:9999`
-- PostgreSQL: `localhost:5432`
+---
 
-## Gateway Routes
+## 🧪 Usage and Demo
 
-| Route               | Upstream         |
-|---------------------|------------------|
-| `GET /health`       | Gateway (Caddy)  |
-| `GET /identity/health` | Identity Service |
-| `GET /class/health` | Class Service    |
-| `GET /submission/health` | Submission Service |
-| `GET /evaluation/health` | Evaluation Service |
-| `GET /grading/health` | Grading Service HTTP health endpoint |
-| `GET /notification/health` | Notification Service |
-| `/api/auth/*`       | Identity Service |
-| `/api/users/*`      | Identity Service |
-| `/api/admin/users*` | Identity Service |
-| `/api/classes*`     | Class Service    |
-| `/api/labs/*/submissions*` | Submission Service |
-| `/api/submissions/*/evaluations*` | Evaluation Service |
-| `/api/evaluations*` | Evaluation Service |
-| `/api/notifications*` | Notification Service |
-| `/api/submissions*` | Submission Service |
-| `/api/labs*`        | Class Service    |
-
-The nested submission route must stay before the generic `/api/labs*` route in `caddy/Caddyfile`.
-
-## Docker Images
-
-Default images:
-
-```bash
-IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:main
-CLASS_IMAGE=dorrissdang/evalcore-class-service:main
-SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:main
-EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:main
-GRADING_IMAGE=dorrissdang/evalcore-grading-service:main
-NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:main
-```
-
-Override in `.env` for a specific tag or commit SHA:
-
-```bash
-IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:v1
-IDENTITY_IMAGE=dorrissdang/evalcore-identity-service:sha-xxxx
-
-CLASS_IMAGE=dorrissdang/evalcore-class-service:v1
-CLASS_IMAGE=dorrissdang/evalcore-class-service:sha-xxxx
-
-SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:v1
-SUBMISSION_IMAGE=dorrissdang/evalcore-submission-service:sha-xxxx
-
-EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:v1
-EVALUATION_IMAGE=dorrissdang/evalcore-evaluation-service:sha-xxxx
-
-GRADING_IMAGE=dorrissdang/evalcore-grading-service:v1
-GRADING_IMAGE=dorrissdang/evalcore-grading-service:sha-xxxx
-
-NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:v1
-NOTIFICATION_IMAGE=dorrissdang/evalcore-notification-service:sha-xxxx
-```
-
-## MinIO Buckets
-
-The stack creates these buckets on startup:
-
-- `lab-assets`
-- `submission-assets`
-- `evaluation-reports`
-
-`evaluation-reports` is reserved for the Evaluation Service.
-
-MinIO CORS is configured with `MINIO_API_CORS_ALLOW_ORIGIN` for browser presigned uploads and downloads. The `minio-init` service creates the intended buckets and logs the active MinIO API CORS setting.
-
-Allowed frontend origins:
-
-- `http://localhost:3000`
-- `http://localhost:5173`
-- `https://prn232.dorriss.com`
-
-Browser `PUT` to presigned URLs should work for:
-
-- `lab-assets`
-- `submission-assets`
-
-The same MinIO API CORS setting covers `evaluation-reports`, which is reserved for future report downloads.
-
-## Vercel and production CORS
-
-The Vercel frontend at `https://prn232.dorriss.com` is included in the default
-`CORS_ALLOWED_ORIGINS` and `MINIO_API_CORS_ALLOW_ORIGIN` values. Caddy handles
-Gateway `/api/*` preflight requests and adds API response CORS headers for the
-approved origins. The Gateway policy allows `Authorization` and `Content-Type`
-headers and `GET`, `POST`, `PATCH`, `PUT`, `DELETE`, and `OPTIONS` methods.
-
-For browser presigned uploads, MinIO must be published at a public HTTPS URL.
-Set `S3_PUBLIC_ENDPOINT` in the deployment `.env` to that browser-reachable
-URL (not `localhost` or `http://minio:9000`) and set `S3_USE_SSL=true`. MinIO
-CORS must allow `https://prn232.dorriss.com`; presigned upload/download flows
-need `GET`, `PUT`, `POST`, and `HEAD` available to the browser.
-
-The frontend Vercel environment must set `NEXT_PUBLIC_API_URL` to the public
-Cloudflare Tunnel URL for this Gateway, for example
-`https://api-prn232.dorriss.com`.
-
-## Dozzle Logs
-
-Dozzle is available at `http://localhost:9999` when the app profile is running. It is for local development only and is used to view Docker container logs.
-
-Dozzle reads Docker metadata and logs through the read-only Docker socket mount. It is not routed through Caddy and should not be exposed publicly.
-
-## Current Flow
-
-The app smoke test covers the full gateway path:
-
-1. Lecturer creates a class.
-2. Student joins the class.
-3. Lecturer creates a lab and uploads the requirement PDF and Postman collection to MinIO with presigned URLs.
-4. Lecturer completes lab assets and the lab becomes active.
-5. Student creates a submission.
-6. Student uploads a ZIP to MinIO with the submission presigned URL.
-7. Student completes submission assets and the submission becomes submitted.
-8. Student lists and opens their submitted work.
-9. Lecturer lists lab submissions and downloads the submitted ZIP.
-10. Evaluation consumes `SubmissionSubmitted`, runs the isolated Docker Compose/Newman sandbox, and calls the independent Grading Service over gRPC with the real assertion results and rubric snapshot.
-11. Grading returns the equal-assertion or weighted-rubric result; Evaluation persists it in the report/API/live monitor and publishes `EvaluationCompleted`.
-12. Notification consumes `EvaluationCompleted`, resolves the student through Identity's protected internal endpoint, and creates an email delivery record. Set `NOTIFICATION_EMAIL_ENABLED=true` plus SMTP settings in `.env` to send email; otherwise the delivery is recorded as `skipped`.
-
-External user interactions use REST APIs through the gateway. RabbitMQ remains the
-asynchronous event-driven channel for submission and evaluation lifecycle events.
-gRPC is reserved for synchronous internal scoring: after Newman finishes,
-Evaluation sends the extracted assertion results and rubric criteria to Grading,
-which encapsulates both equal-assertion and weighted-rubric scoring.
-
-Demo sentence: “After Newman generates assertion results, Evaluation Service calls
-an independent gRPC Grading Service to calculate the final weighted score. This is
-the system’s gRPC communication requirement.”
-
-`make smoke-evaluation` uses the known-good fixture under `../test/dist/evaluation`, exercises the automatic consumer path only, and verifies the final score, artifacts, published outbox event, and sandbox cleanup. Override the fixture paths with `EVAL_FIXTURE_ZIP` and `EVAL_COLLECTION_JSON` when needed.
-
-Evaluation scoring has two explicit modes:
-
-- Labs without a rubric keep the original equal-assertion policy. Passing assertions are divided by total assertions and scaled to a maximum score of 100.
-- Labs with criteria configured through `PUT /api/labs/{labId}/rubric` use the lecturer-defined weights. A criterion receives its full weight only when every matching Newman assertion passes; a required criterion with no match receives zero and is reported as missing.
-
-The original `make smoke-evaluation` path intentionally has no rubric. It remains the regression check for equal-assertion fallback.
-Run `make smoke-rubric` for the corresponding end-to-end weighted check. It
-configures the 10-point fixture, runs the weighted collection, and verifies the
-evaluation API plus `report.json` scoring breakdown.
-
-Run `make smoke-grpc` with the app profile running to verify Grading health directly
-and through the gateway, confirm both Evaluation processes have gRPC enabled, and
-then run the full weighted rubric smoke. If the API or report exposes a scoring
-provider field, the smoke also requires that provider to be `grpc`.
-
-`make smoke-notification` runs the evaluation smoke, verifies the Notification inbox, notification, and delivery rows, and verifies the student's notification APIs through the gateway.
-
-## Live grading burst demo
-
-EvalCore deliberately separates accepting a submission from running its untrusted
-project. Submission events are published through the durable outbox to RabbitMQ,
-the Evaluation Service records queued evaluations in PostgreSQL as a durable
-waiting room, and the runner starts only
-`EVALUATION_RUNNER_CONCURRENCY` isolated Docker sandboxes at once. The default is
-`2`; the system intentionally does not start 100 Docker jobs when 100 students
-submit together.
-
-For the review environment, use `EVALUATION_STARTUP_TIMEOUT_SECONDS=180`. This
-gives a freshly created sandbox database more time to initialize without
-changing, suppressing, or manufacturing an evaluation result. Existing `.env`
-files override the Compose default, so update that local value before recreating
-the runner if it is still set to `90`.
-
-After starting or recreating the stack, run `make smoke-evaluation` once before
-the full burst. That honest end-to-end check validates the fixture and warms the
-Docker image/build cache; it does not seed evaluation results or bypass the
-normal submission event path.
-
-Run the real API demo with:
-
-```bash
-make demo-100-submissions
-```
-
-The lecturer frontend must already be running and its live monitor route must be
-reachable. The script checks this before it creates any accounts, classes, or
-submissions:
+Start the frontend separately for lecturer live-monitor demos:
 
 ```bash
 cd ../prn232-pe-evaluation-fe
+bun install
 bun run dev
 ```
 
-The script creates a fresh class and active lab, configures the 12-criterion
-10-point rubric from `fixtures/prn232-weighted-rubric.json`, registers 100 unique
-student accounts through Identity, joins them to the class, uploads exactly one
-real ZIP per student through the submission's presigned URL, and then completes
-the submissions in a bounded burst. It verifies unique emails, student IDs, and
-submission IDs. It never seeds the database and never calls a manual evaluation
-endpoint. It waits only until all accepted events appear in the Evaluation
-database by default; the Docker evaluations continue in the background while
-the lecturer watches `http://localhost:3000/lecturer/live-grading`.
-
-The default `DEMO_VARIANT_MODE=uniform` preserves the pacing/stress demo: every
-student submits the known-good ZIP and should receive `passed` with `10.0/10.0`.
-
-Build the deterministic submission variants and run the self-verifying small
-mixed demo with:
+Available verification and demonstration commands:
 
 ```bash
+make smoke-app
+make smoke-evaluation
+make smoke-notification
+make smoke-rubric
+make smoke-grpc
+make smoke-swagger
 make demo-build-variants
 make demo-10-submissions-mixed
-```
-
-The generator derives every ZIP from the known-good submission fixture and
-writes them to `../test/dist/evaluation/variants`. That workspace fixture path
-is not tracked by the Ops repository, so generated ZIPs stay local and can be
-recreated at any time from the committed generator.
-
-Mixed mode uses the weighted collection under
-`../test/dist/evaluation/PRN232-LMS-LAB2-weighted.postman_collection.json` and
-the real ZIPs under `../test/dist/evaluation/variants`. Every represented
-variant is interleaved deterministically across unique students. For counts of
-at least eight, every variant appears at least once; the 10-student target uses
-three passing ZIPs and one of each of the other seven variants. Once all ten
-evaluations finish, the script joins monitor results back to each stored
-submission ID and verifies scoring mode, the 10-point maximum, expected status,
-reduced scores for assertion failures, and zero-score coded infrastructure
-errors.
-
-For the full review intake, run:
-
-```bash
 make demo-100-submissions-mixed
 ```
 
-The exact 100-student distribution is 60 pass, 8 Swagger failures, 10
-pagination failures, 8 response-format failures, 6 multiple-criteria failures,
-4 readiness errors, 2 build errors, and 2 invalid-Compose errors. The full target
-does not wait for every sandbox unless `DEMO_WAIT_FOR_COMPLETION=true` is set.
+The app smoke covers authentication, class/lab creation, secure lab assets, MinIO uploads, and submission access. Evaluation smoke consumes the real event, starts the submitted Compose project, runs Newman, calls Grading over gRPC, persists the report, and verifies cleanup. Notification smoke verifies the downstream inbox and delivery records.
 
-After intake, the script verifies that scoped `running` and global `activeSlots`
-do not exceed the API's numeric `runnerConcurrency`, rechecks service health,
-and, for a local Gateway, reports active `evalcore-*` Compose projects and
-rejects excess projects or exited sandbox leftovers.
+Mixed mode derives deterministic ZIP variants from the known-good project and verifies real pass, rubric-failure, build-error, readiness-error, and invalid-Compose outcomes. It never seeds evaluation results. The 10- and 100-submission demos require the frontend live-monitor route to be reachable before creating demo data.
 
-Tune HTTP burst size independently from runner pacing:
+---
 
-```bash
-DEMO_SUBMISSION_COUNT=10 DEMO_SUBMIT_CONCURRENCY=5 make demo-100-submissions
-```
+## ☁️ Deployment
 
-To keep polling until every evaluation reaches a terminal state, opt in
-explicitly. Uniform mode requires every result to pass. Mixed mode instead
-requires its exact expected passed/failed/error distribution; genuine grading
-failures and infrastructure errors are successful evidence for that demo:
+### Local Docker Compose
 
-```bash
-DEMO_WAIT_FOR_COMPLETION=true make demo-100-submissions
-```
+The application profile pulls backend images from DockerHub and runs PostgreSQL, RabbitMQ, MinIO, the .NET services, Swagger UI, Caddy, and Dozzle on one Docker network. The frontend can run with Bun on port 3000 or use a separately deployed URL.
 
-The burst demo defaults to
-`fixtures/PRN232-LMS-LAB2-weighted.postman_collection.json`. Its assertion
-names contain the rubric match patterns and still execute real HTTP/OpenAPI
-checks. Docker Deployment is represented by successful Compose readiness plus
-the health assertion. Architecture, project naming, model coverage, and Code
-Quality use documented runtime/OpenAPI proxies; Newman alone cannot fully prove
-source organization or maintainability. A future static-analysis plugin should
-replace those proxies where full rigor is required.
+### VPS / On-Premises Placeholder
 
-The rubric total is 10.0 and each criterion has its own `maxScore`. Normal
-Newman assertion failures reduce the weighted score and remain `failed` business
-results. Invalid packages, build failures, and readiness failures remain
-zero-score `error` results; the script does not disguise them as rubric misses.
+Use a Linux host with Docker Compose, persistent volumes, a public DNS name, TLS termination, firewall rules, and an external secret store or protected environment file. Publish only the gateway and required storage upload endpoint. Keep PostgreSQL, RabbitMQ, internal service ports, and gRPC private; disable or protect Dozzle and infrastructure consoles outside a trusted network.
 
-Useful optional settings are `DEMO_VARIANT_MODE` (`uniform` by default),
-`DEMO_VARIANTS_DIR`, `DEMO_MONITOR_TIMEOUT_SECONDS` (default `300`),
-`DEMO_WAIT_TIMEOUT_SECONDS` (default `14400`), `DEMO_MONITOR_POLL_SECONDS`
-(default `2`), `DEMO_EXPECTED_RUNNER_CONCURRENCY` (default `2`),
-`DEMO_FRONTEND_URL`, `EVAL_FIXTURE_ZIP`, and
-`EVAL_COLLECTION_JSON`. Override `DEMO_RUBRIC_JSON` only together with a
-collection whose real assertion names match every required criterion. API calls
-Mixed mode's exact score/error self-verification is calibrated to the supplied
-rubric, collection, and generated variants. API calls and uploads also have
-bounded connection and
-request timeouts so a stalled service cannot leave a parallel worker hanging;
-override `DEMO_CURL_CONNECT_TIMEOUT_SECONDS`,
-`DEMO_CURL_HEALTH_TIMEOUT_SECONDS`, `DEMO_CURL_API_TIMEOUT_SECONDS`, or
-`DEMO_CURL_UPLOAD_TIMEOUT_SECONDS` only when the target environment needs it.
-Each run uses fresh timestamped accounts and data so that its lab-scoped monitor
-counts remain unambiguous.
+### Cloud / Vercel Placeholder
 
-For safety, `GATEWAY_URL` must use `localhost`, `127.0.0.1`, or `[::1]` by
-default. A deliberate staging run must opt in, use an HTTPS Gateway so demo
-credentials and tokens remain encrypted in transit, and point at a reachable
-frontend:
+Deploy `prn232-pe-evaluation-fe` to Vercel and configure `NEXT_PUBLIC_API_URL` with the public HTTPS gateway URL. Run the backend stack on a Docker-capable VPS or cloud VM with managed PostgreSQL/S3 substitutions where appropriate. Replace this section with the final provider, region, domain, and evidence links before submission.
 
-```bash
-DEMO_ALLOW_REMOTE=true \
-GATEWAY_URL=https://api-staging.example.com \
-DEMO_FRONTEND_URL=https://staging.example.com \
-make demo-100-submissions
-```
+### Cloudflare Tunnel Placeholder
 
-Remote runs never use the local demo student password. Set a non-default
-`DEMO_STUDENT_PASSWORD`, or leave it empty and the script generates a strong
-per-run password without printing it.
+A Cloudflare Tunnel can publish the HTTPS gateway and MinIO upload endpoint without opening inbound application ports. Configure explicit hostnames, origin access controls, and browser CORS. Do not route the grading gRPC port publicly unless the deployment architecture explicitly requires and secures it.
 
-## Credentials
+### Environment Variables
 
-RabbitMQ:
+| Variable | Purpose | Local example / note |
+|---|---|---|
+| `IDENTITY_IMAGE`, `CLASS_IMAGE`, `SUBMISSION_IMAGE` | Published REST service images. | `dorrissdang/evalcore-*-service:main` |
+| `EVALUATION_IMAGE` | Shared Evaluation API and runner image. | `dorrissdang/evalcore-evaluation-service:main` |
+| `GRADING_IMAGE` | Internal gRPC scorer image. | `dorrissdang/evalcore-grading-service:main` |
+| `NOTIFICATION_IMAGE` | Notification API and consumer image. | `dorrissdang/evalcore-notification-service:main` |
+| `POSTGRES_*` | Database name, user, password, and host port. | Change all demonstration credentials. |
+| `RABBITMQ_*` | Broker credentials, exchange, and ports. | Keep management access private in production. |
+| `S3_PUBLIC_ENDPOINT` | Browser-reachable presigned-upload origin. | Use public HTTPS outside local development. |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | MinIO/S3 credentials. | Store as deployment secrets. |
+| `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE` | Token signing and validation. | Use a strong secret and consistent values. |
+| `INTERNAL_SERVICE_TOKEN` | Trusted backend-to-backend authorization. | Never expose to browsers. |
+| `CORS_ALLOWED_ORIGINS` | Approved frontend origins. | Add the final Vercel/custom domain. |
+| `GRADING_GRPC_URL` | Internal Grading endpoint. | `http://grading-service:5007` |
+| `EVALUATION_RUNNER_CONCURRENCY` | Maximum simultaneous sandboxes per runner. | Default `2`. |
+| `NOTIFICATION_EMAIL_ENABLED`, `SMTP_*` | Optional result email delivery. | Disabled until SMTP is configured. |
+| `NEXT_PUBLIC_API_URL` | Frontend gateway base URL. | `http://localhost:8080` locally. |
 
-- Username: `ags`
-- Password: `ags_password`
+---
 
-MinIO:
+## 👥 Team Member Responsibilities
 
-- Username: `ags`
-- Password: `ags_password`
+| Member | Responsibilities |
+|---|---|
+| **Nam Dang** | System architecture, backend services, evaluation runner, gRPC scoring, frontend integration, Ops/deployment, and demo preparation. |
+| **Member 2** | Update name and responsibilities before submission. |
+| **Member 3** | Update name and responsibilities before submission. |
+| **Member 4** | Update name and responsibilities before submission. |
 
-Demo Identity accounts:
+---
 
-- `admin@ags.local` / `Password123!`
-- `lecturer@ags.local` / `Password123!`
-- `student@ags.local` / `Password123!`
+## 🗺️ Roadmap
 
-## Frontend Env
+- [ ] Add source-aware static-analysis plugins to complement runtime Newman assertions.
+- [ ] Add runner heartbeat and lease reclaim for interrupted evaluations.
+- [ ] Stream live-monitor updates through WebSocket or Server-Sent Events.
+- [ ] Strengthen sandbox isolation with dedicated workers and stricter kernel/runtime policies.
+- [ ] Scale horizontally across multiple Evaluation Runners.
+- [ ] Support cloud-managed PostgreSQL and object storage.
 
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8080
-NEXT_PUBLIC_USE_MOCK_AUTH=false
-```
+---
 
-## Environment Files
+## 📄 License
 
-Root `.env.example` is the primary environment template for `compose.yaml`.
+License placeholder: select and add the final project license before public distribution.
 
-```bash
-make env
-```
+---
 
-creates root `.env` if missing and also creates legacy `compose/.env` if missing. Existing env files are not overwritten.
+## 📧 Contact
 
-Do not commit `.env` or `compose/.env`.
+Project repository: `https://github.com/<organization-or-user>/<evalcore-repository>`
 
-If your local `.env` predates OPS-005, add the new CLASS_* and SUBMISSION_* variables manually or regenerate it:
+Project contact: `<team-email-or-maintainer-profile>`
 
-```bash
-rm .env && cp .env.example .env
-```
+---
 
-## Legacy Host Mode
-
-Legacy host-mode still exists for backend debugging:
-
-- Infrastructure uses `compose/docker-compose.infra.yml`.
-- Gateway uses `compose/docker-compose.gateway.yml`.
-- The gateway can route to a host-running Identity Service with `IDENTITY_UPSTREAM=host.docker.internal:8081`.
-
-Useful legacy commands:
-
-```bash
-make infra-up
-make infra-ps
-make smoke-infra
-make gateway-up
-make gateway-ps
-make smoke-auth
-make auth-stack-down
-```
-
-Full Docker mode is recommended for testers.
+<div align="center">
+  <p>Built for the PRN232 Final Assignment.</p>
+  <p>⭐ EvalCore turns real API behavior into transparent, repeatable grading evidence.</p>
+</div>
