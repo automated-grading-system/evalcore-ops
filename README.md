@@ -301,7 +301,35 @@ MINIO_CONSOLE_PORT=19001
 
 For external S3/MinIO, `S3_PUBLIC_ENDPOINT` must be reachable by browsers and must not use `localhost` in a deployed environment. `S3_INTERNAL_ENDPOINT` must be reachable from the application containers. When both use the same public HTTPS endpoint, such as `https://storage.dorriss.com`, set `S3_USE_SSL=true`. Configure CORS on the external MinIO server itself; `MINIO_API_CORS_ALLOW_ORIGIN` configures only the local Compose-managed MinIO. Replace the default `JWT_SECRET` and `INTERNAL_SERVICE_TOKEN` before production or on-prem startup.
 
-Run `make check-onprem-env` before `docker compose --profile app up -d`. Do not run `docker compose down -v` on an on-prem host unless local volumes are intentionally being erased.
+Local/default Compose does not require `selfhost_net`. On-prem commands merge `compose.onprem.yaml`, which attaches the application services to both `ags-network` and the existing external `selfhost_net`. This lets EvalCore reach shared containers by their server-side names:
+
+| Shared service | `selfhost_net` hostname |
+|---|---|
+| PostgreSQL | `core_postgres` |
+| RabbitMQ | `judicator-rabbitmq` |
+| MinIO, container-only option | `core_minio` |
+| MinIO, recommended public option | `https://storage.dorriss.com` |
+
+Recommended S3 settings use the same browser- and container-reachable HTTPS endpoint:
+
+```dotenv
+S3_ENDPOINT=https://storage.dorriss.com
+S3_INTERNAL_ENDPOINT=https://storage.dorriss.com
+S3_PUBLIC_ENDPOINT=https://storage.dorriss.com
+S3_USE_SSL=true
+```
+
+On the server, verify the shared network and use only the on-prem helpers:
+
+```bash
+docker network inspect selfhost_net
+make onprem-check
+make onprem-pull
+make onprem-up
+make onprem-ps
+```
+
+The Cloudflare tunnel container must also join `selfhost_net`; route `api-prn232.dorriss.com` to `http://ags-gateway:8080`. Do not run `docker compose down -v` on an on-prem host unless local volumes are intentionally being erased.
 
 ### Cloud / Vercel Placeholder
 

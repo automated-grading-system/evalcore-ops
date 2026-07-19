@@ -1,0 +1,49 @@
+services:
+  gateway:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  identity-service:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  class-service:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  submission-service:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  evaluation-service:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  evaluation-runner:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  notification-service:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  grading-service:
+    networks:
+      - ags-network
+      - selfhost_net
+
+  swagger-ui:
+    networks:
+      - ags-network
+      - selfhost_net
+
+networks:
+  selfhost_net:
+    external: true

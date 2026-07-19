@@ -7,10 +7,12 @@ LEGACY_ENV_EXAMPLE := compose/.env.example
 COMPOSE := COMPOSE_IGNORE_ORPHANS=True docker compose --env-file $(LEGACY_ENV_FILE) -f $(LEGACY_COMPOSE_FILE)
 GATEWAY_COMPOSE := COMPOSE_IGNORE_ORPHANS=True docker compose --env-file $(LEGACY_ENV_FILE) -f $(LEGACY_GATEWAY_COMPOSE_FILE)
 APP_COMPOSE := docker compose --env-file $(ROOT_ENV_FILE)
+ONPREM_COMPOSE := docker compose -f compose.yaml -f compose.onprem.yaml
 
 .PHONY: env infra-up infra-down infra-reset infra-logs infra-ps smoke-infra
 .PHONY: gateway-up gateway-down gateway-restart gateway-logs gateway-ps smoke-auth auth-stack-up auth-stack-down
 .PHONY: app-pull app-up app-down app-restart app-ps app-logs check-onprem-env smoke-app smoke-evaluation smoke-rubric smoke-grpc smoke-notification smoke-swagger
+.PHONY: onprem-check onprem-pull onprem-up onprem-ps
 .PHONY: demo-build-variants demo-100-submissions demo-10-submissions-mixed demo-100-submissions-mixed
 .PHONY: services-pull services-up services-down web-up stack-up stack-down
 
@@ -84,6 +86,23 @@ app-logs: env
 
 check-onprem-env:
 	./scripts/check-onprem-env.sh
+
+onprem-check:
+	@docker network inspect selfhost_net >/dev/null 2>&1 || { \
+		echo "Missing external Docker network selfhost_net. Create it or ensure the shared server network exists." >&2; \
+		exit 1; \
+	}
+	$(ONPREM_COMPOSE) --profile app config --quiet
+	$(MAKE) --no-print-directory check-onprem-env
+
+onprem-pull:
+	$(ONPREM_COMPOSE) --profile app pull
+
+onprem-up:
+	$(ONPREM_COMPOSE) --profile app up -d
+
+onprem-ps:
+	$(ONPREM_COMPOSE) --profile app ps
 
 smoke-app: env
 	./scripts/smoke-auth-gateway.sh
